@@ -6,31 +6,75 @@
  * phone pointed at a table, and a white screen next to a glossy card is a
  * reflection waiting to happen - which the measurements say is the single most
  * damaging thing that can happen to a read.
+ *
+ * The accent is gold rather than the blue every app in this category uses
+ * (Collectr teal, HoloDex blue, FoilSnap blue, Rare Candy indigo). Two reasons,
+ * and neither is taste: on a shelf of blue icons a warm one is the one you find,
+ * and gold is the colour of the thing the app is for - the card worth keeping
+ * out of a box of bulk.
  */
+
+import { Platform } from 'react-native';
 
 export const c = {
   /** Backgrounds, darkest first. */
-  bg: '#0b0e14',
-  surface: '#131824',
-  surfaceHi: '#1a2131',
-  line: '#242c3d',
-  lineSoft: '#1c2334',
+  bg: '#08090d',
+  /** A raised surface: cards, rows, sheets. */
+  surface: '#12141c',
+  surfaceHi: '#1a1e29',
+  /** The top layer - pressed states, floating controls. */
+  surfaceTop: '#222634',
+  line: '#272c3a',
+  lineSoft: '#1b1f2a',
 
-  text: '#e7ecf5',
-  dim: '#8b97b0',
-  faint: '#5e6a80',
+  text: '#f2f4f9',
+  dim: '#98a1b8',
+  faint: '#646e85',
 
   /** Money is green, and only money is green. */
-  money: '#86efac',
-  moneyDim: '#4ade80',
+  money: '#7ee7a8',
+  moneyDim: '#3fbd75',
 
-  accent: '#5cc8ff',
-  accentDim: '#1d4ed8',
+  /** The brand: warm, and the only warm thing on screen. */
+  accent: '#f7c14b',
+  accentDeep: '#c9922a',
+  /** A wash of the accent, for selected chips and highlight fills. */
+  accentWash: 'rgba(247,193,75,0.14)',
+  accentLine: 'rgba(247,193,75,0.42)',
+  /** Ink that reads on top of a solid accent fill. */
+  onAccent: '#1a1204',
+
   warn: '#fbbf24',
-  bad: '#f87171',
-  good: '#22c55e',
-  goodBg: '#166534',
+  bad: '#fb7185',
+  badWash: 'rgba(251,113,133,0.13)',
+  good: '#34d399',
+  goodWash: 'rgba(52,211,153,0.13)',
+
+  /** Card art sits on this while it loads, and where art is missing. */
+  slot: '#1c2130',
 } as const;
+
+/**
+ * Rarity, as a colour.
+ *
+ * Collectors read rarity before they read anything else on a row, and the
+ * catalogue's rarity strings are long and inconsistent ("Rare Holo VMAX",
+ * "Ultra Rare", "Double Rare"). A dot in the right colour says it in 8 pixels.
+ */
+export function rarityTone(rarity: string | null | undefined): string {
+  if (!rarity) return c.faint;
+  const r = rarity.toLowerCase();
+  if (r.includes('secret') || r.includes('hyper') || r.includes('rainbow')) return '#f0abfc';
+  if (r.includes('illustration') || r.includes('star') || r.includes('shiny')) return '#fca5a5';
+  if (r.includes('ultra') || r.includes('vmax') || r.includes('vstar') || r.includes('ex')) {
+    return '#c4b5fd';
+  }
+  if (r.includes('double') || r.includes('holo')) return '#7dd3fc';
+  if (r.includes('rare')) return '#fcd34d';
+  if (r.includes('uncommon')) return '#9ca3af';
+  if (r.includes('promo')) return '#5eead4';
+  return '#6b7280';
+}
 
 /** A 4-point spacing scale. */
 export const s = {
@@ -46,16 +90,46 @@ export const r = {
   sm: 8,
   md: 12,
   lg: 16,
+  xl: 22,
   pill: 999,
 } as const;
 
+/**
+ * Money and counts are set in tabular figures.
+ *
+ * A column of prices where the digits are different widths does not line up,
+ * and a list of prices that does not line up is unreadable at a glance - which
+ * is the only way anyone reads a collection list.
+ */
+export const nums = { fontVariant: ['tabular-nums' as const] };
+
 export const t = {
-  hero: { fontSize: 34, fontWeight: '800' as const, letterSpacing: -0.5 },
-  title: { fontSize: 20, fontWeight: '700' as const },
-  section: { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.8 },
+  hero: {
+    fontSize: 38, fontWeight: '800' as const, letterSpacing: -1.1,
+    ...nums,
+  },
+  title: { fontSize: 21, fontWeight: '800' as const, letterSpacing: -0.3 },
+  subtitle: { fontSize: 17, fontWeight: '700' as const, letterSpacing: -0.2 },
+  section: { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1.1 },
   body: { fontSize: 15, fontWeight: '600' as const },
   meta: { fontSize: 12.5, fontWeight: '500' as const },
-  tiny: { fontSize: 11, fontWeight: '500' as const },
+  tiny: { fontSize: 11, fontWeight: '600' as const },
+  money: { fontSize: 15, fontWeight: '700' as const, ...nums },
+} as const;
+
+/**
+ * Shadows, as one token per level.
+ *
+ * `boxShadow` rather than the `shadow*` props: React Native has accepted the CSS
+ * string since 0.76 and react-native-web now warns on the old ones, so this is
+ * the single spelling both platforms agree on.
+ *
+ * Elevation is what separates a list of rows from a stack of objects, and this
+ * app is a stack of objects.
+ */
+export const shadow = {
+  low: { boxShadow: '0 3px 8px rgba(0,0,0,0.35)' },
+  high: { boxShadow: '0 10px 24px rgba(0,0,0,0.5)' },
 } as const;
 
 /**
@@ -84,3 +158,35 @@ export function moneyShort(v: number | null | undefined): string {
 
 export const plural = (n: number, one: string, many = `${one}s`) =>
   `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
+
+/**
+ * Where a card's picture lives.
+ *
+ * The catalogue's own image URL is `{setId}/{number}.png` on the same host for
+ * every one of the 20,444 cards, so it is derived rather than stored - 20k URLs
+ * would be half a megabyte of duplicated string in a file the app parses at
+ * launch. Recognition never touches these: they are decoration, and everything
+ * that reads a card still works with the network off.
+ */
+export function artUrl(setId: string, number: string, hires = false): string {
+  const n = encodeURIComponent(number);
+  return `https://images.pokemontcg.io/${setId}/${n}${hires ? '_hires' : ''}.png`;
+}
+
+/** A set's symbol - the little glyph printed next to a card's number. */
+export const symbolUrl = (setId: string) =>
+  `https://images.pokemontcg.io/${setId}/symbol.png`;
+
+/** A set's logo, wide and transparent. */
+export const logoUrl = (setId: string) =>
+  `https://images.pokemontcg.io/${setId}/logo.png`;
+
+/**
+ * Kill the focus ring a browser draws on a text field.
+ *
+ * `outlineStyle` is a react-native-web property that native React Native does
+ * not know; spreading an empty object on the phone keeps both type-checkers
+ * happy and leaves iOS's own focus behaviour alone.
+ */
+export const noOutline: Record<string, string> =
+  Platform.OS === 'web' ? { outlineStyle: 'none' } : {};

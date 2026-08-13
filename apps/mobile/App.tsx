@@ -40,15 +40,20 @@ import {
 import { loadCollection, saveCollection } from './src/collectionStore';
 import { record, type Point } from './src/history';
 import { loadEngine, type LoadedEngine } from './src/engine';
-import { c, s, t } from './src/ui/theme';
+import {
+  CollectionIcon, ScanIcon, SearchIcon, SetsIcon, type IconProps,
+} from './src/ui/icons';
+import { c, r, s, shadow, t } from './src/ui/theme';
 
 type Tab = 'scan' | 'collection' | 'sets' | 'browse';
 
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: 'scan', label: 'Scan' },
-  { id: 'collection', label: 'Collection' },
-  { id: 'sets', label: 'Sets' },
-  { id: 'browse', label: 'Browse' },
+const TABS: Array<{
+  id: Tab; label: string; Icon: (p: IconProps) => React.ReactElement;
+}> = [
+  { id: 'scan', label: 'Scan', Icon: ScanIcon },
+  { id: 'collection', label: 'Collection', Icon: CollectionIcon },
+  { id: 'sets', label: 'Sets', Icon: SetsIcon },
+  { id: 'browse', label: 'Browse', Icon: SearchIcon },
 ];
 
 export default function App() {
@@ -188,8 +193,14 @@ export default function App() {
     return (
       <Shell>
         <View style={styles.center}>
-          <ActivityIndicator color={c.accent} />
-          <Text style={styles.muted}>Loading 20,000 card fingerprints…</Text>
+          <View style={styles.loadCard}>
+            <Text style={styles.brand}>
+              Bulk<Text style={styles.brandDot}>Sift</Text>
+            </Text>
+            <ActivityIndicator color={c.accent} />
+            <Text style={styles.muted}>Loading 20,444 card fingerprints</Text>
+            <Text style={styles.loadHint}>Everything is on this phone. No account, no upload.</Text>
+          </View>
         </View>
       </Shell>
     );
@@ -254,20 +265,23 @@ export default function App() {
       </View>
 
       <View style={styles.tabs}>
-        {TABS.map((x) => (
-          <Pressable
-            key={x.id}
-            style={styles.tab}
-            onPress={() => {
-              if (x.id === 'scan' && tab !== 'scan') sessionStart.current = Date.now();
-              if (x.id === 'browse' && tab !== 'browse') setSetFilter(null);
-              setTab(x.id);
-            }}
-          >
-            <View style={[styles.tabDot, tab === x.id && styles.tabDotOn]} />
-            <Text style={[styles.tabText, tab === x.id && styles.tabTextOn]}>{x.label}</Text>
-          </Pressable>
-        ))}
+        {TABS.map((x) => {
+          const on = tab === x.id;
+          return (
+            <Pressable
+              key={x.id}
+              style={({ pressed }) => [styles.tab, pressed && { opacity: 0.6 }]}
+              onPress={() => {
+                if (x.id === 'scan' && tab !== 'scan') sessionStart.current = Date.now();
+                if (x.id === 'browse' && tab !== 'browse') setSetFilter(null);
+                setTab(x.id);
+              }}
+            >
+              <x.Icon size={23} color={on ? c.accent : c.faint} strong={on} />
+              <Text style={[styles.tabText, on && styles.tabTextOn]}>{x.label}</Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       <CardSheet
@@ -313,10 +327,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1, borderTopColor: c.line,
     backgroundColor: c.surface,
+    paddingTop: 7, paddingBottom: 5,
   },
-  tab: { flex: 1, alignItems: 'center', paddingTop: 9, paddingBottom: 7, gap: 5 },
-  tabDot: { width: 18, height: 3, borderRadius: 2, backgroundColor: 'transparent' },
-  tabDotOn: { backgroundColor: c.accent },
-  tabText: { ...t.tiny, color: c.faint, fontWeight: '600' },
-  tabTextOn: { color: c.text, fontWeight: '800' },
+  tab: { flex: 1, alignItems: 'center', gap: 3 },
+  tabText: { fontSize: 10.5, color: c.faint, fontWeight: '700', letterSpacing: 0.1 },
+  tabTextOn: { color: c.accent, fontWeight: '800' },
+  loadCard: {
+    alignItems: 'center', gap: s.md, paddingHorizontal: s.xl, paddingVertical: s.xxl,
+    borderRadius: r.xl, backgroundColor: c.surface,
+    borderWidth: 1, borderColor: c.lineSoft, ...shadow.high,
+  },
+  brand: { ...t.title, fontSize: 27, color: c.text, letterSpacing: -0.6 },
+  brandDot: { color: c.accent },
+  loadHint: { ...t.tiny, color: c.faint, textAlign: 'center' },
 });

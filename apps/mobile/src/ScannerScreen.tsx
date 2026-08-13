@@ -53,6 +53,9 @@ import { createSynchronizable, scheduleOnRN } from 'react-native-worklets';
 import type { CardRecord, ScanHit } from '@bulksift/core';
 import { type LoadedEngine } from './engine';
 import { c, money as fmtMoney, r as rd, s as sp, t as ty } from './ui/theme';
+import CardImage from './ui/CardImage';
+import { ScanIcon } from './ui/icons';
+import { Badge, Button } from './ui/parts';
 import { cameraPixels, lumaSource, toWorkGrid, type FrameInfo } from './frame';
 import { isNativeAvailable, nativeDescriber, nativeStages } from '../modules/bulksift-detect';
 import { runSelfTest } from './selfTest';
@@ -121,7 +124,9 @@ export default function ScannerScreen({
   const backDevice = useCameraDevice('back');
   const allDevices = useCameraDevices();
   const device = backDevice ?? allDevices[0];
-  const [live, setLive] = useState<{ name: string; set: string } | null>(null);
+  const [live, setLive] = useState<
+    { name: string; set: string; setId: string; number: string } | null
+  >(null);
   /**
    * How much of the frame the card covers, 0..1.
    *
@@ -153,8 +158,8 @@ export default function ScannerScreen({
    * scanning UI as well.
    */
   const [recent, setRecent] = useState<Array<{
-    key: string; name: string; set: string; number: string;
-    price: number | null; unsure: boolean;
+    key: string; name: string; set: string; setId: string; number: string;
+    rarity: string | null; price: number | null; unsure: boolean;
   }>>([]);
 
   const engineRef = useRef<LoadedEngine | null>(null);
@@ -302,9 +307,12 @@ export default function ScannerScreen({
       setFill((prev) => (Math.abs(prev - area) < 0.02 ? prev : area));
 
       if (result.preview) {
-        const name = result.preview.card.n;
-        const set = result.preview.card.S;
-        setLive((prev) => (prev && prev.name === name && prev.set === set ? prev : { name, set }));
+        const card = result.preview.card;
+        setLive((prev) => (
+          prev && prev.name === card.n && prev.set === card.S
+            ? prev
+            : { name: card.n, set: card.S, setId: card.s, number: card.u }
+        ));
       } else if (!result.detection) {
         setLive((prev) => (prev === null ? prev : null));
       }
@@ -317,7 +325,9 @@ export default function ScannerScreen({
             key: `${hit.card.i}-${seqRef.current++}`,
             name: hit.card.n,
             set: hit.card.S,
+            setId: hit.card.s,
             number: hit.card.u,
+            rarity: hit.card.r ?? null,
             price: hit.topMarket,
             unsure: !!hit.ambiguity,
           },
@@ -440,11 +450,13 @@ export default function ScannerScreen({
   if (!hasPermission) {
     return (
       <View style={styles.center}>
+        <ScanIcon size={44} color={c.accent} />
         <Text style={styles.title}>Camera access needed</Text>
-        <Text style={styles.muted}>BulkSift reads cards on-device; nothing is uploaded.</Text>
-        <Pressable style={styles.btn} onPress={() => void requestPermission()}>
-          <Text style={styles.btnText}>Grant access</Text>
-        </Pressable>
+        <Text style={styles.muted}>
+          BulkSift reads cards on this phone. No photo is uploaded and no
+          account is required.
+        </Text>
+        <Button label="Grant access" kind="primary" onPress={() => void requestPermission()} />
       </View>
     );
   }
@@ -459,6 +471,10 @@ export default function ScannerScreen({
     );
   }
 
+  const aim: 'idle' | 'near' | 'good' =
+    fill >= GOOD_FILL ? 'good' : fill > 0 ? 'near' : 'idle';
+  const bracket = aim === 'good' ? c.good : aim === 'near' ? c.warn : 'rgba(242,244,249,0.5)';
+
   return (
     <View style={styles.root}>
       <View style={styles.cameraWrap}>
@@ -469,23 +485,60 @@ export default function ScannerScreen({
           outputs={outputs}
           onError={(e) => setDiag(`camera error: ${e.message}`)}
         />
+
+        {/*
+          Corner brackets rather than a full rectangle.
+          A closed outline invites you to line the card up with it; brackets
+          say "somewhere in here", which is what the detector actually wants -
+          it finds the quad itself, and the only thing that matters is that the
+          card is big enough in frame. The measurements are blunt about that:
+          a card at half the frame's width costs 256 bits of match quality,
+          more than blur, white balance and glare put together.
+        */}
         <View pointerEvents="none" style={styles.guideWrap}>
-          <View
-            style={[
-              styles.guide,
-              fill >= GOOD_FILL ? styles.guideGood : fill > 0 ? styles.guideNear : null,
-            ]}
-          />
+          <View style={styles.guide}>
+            {([
+              ['tl', { top: -2, left: -2 }],
+              ['tr', { top: -2, right: -2 }],
+              ['bl', { bottom: -2, left: -2 }],
+              ['br', { bottom: -2, right: -2 }],
+            ] as const).map(([id, pos]) => (
+              <View
+                key={id}
+                style={[
+                  styles.corner,
+                  pos,
+                  { borderColor: bracket },
+                  id[0] === 't' ? styles.cornerTop : styles.cornerBottom,
+                  id[1] === 'l' ? styles.cornerLeft : styles.cornerRight,
+                ]}
+              />
+            ))}
+          </View>
         </View>
+
+        {/* What the engine is seeing right now, over the picture. */}
         <View pointerEvents="none" style={styles.hud}>
-          <Text style={styles.hudText} numberOfLines={1}>
-            {live
-              ? `${live.name} · ${live.set}`
-              : fill > 0 && fill < GOOD_FILL
-                ? 'Move closer — fill the frame'
+          {live ? (
+            <>
+              <CardImage
+                setId={live.setId} number={live.number} width={30} radius={3}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.hudText} numberOfLines={1}>{live.name}</Text>
+                <Text style={styles.hudSub} numberOfLines={1}>{live.set}</Text>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.hudText} numberOfLines={1}>
+              {aim === 'near'
+                ? 'Move closer — fill the brackets'
                 : 'Pass a card through the frame'}
-          </Text>
-          <Text style={styles.hudDim}>{fps.toFixed(0)} fps</Text>
+            </Text>
+          )}
+          <View style={[styles.fps, aim === 'good' && { borderColor: c.good }]}>
+            <Text style={styles.fpsText}>{fps.toFixed(0)} fps</Text>
+          </View>
         </View>
       </View>
 
@@ -495,51 +548,67 @@ export default function ScannerScreen({
         is where any of it gets examined.
       */}
       <View style={styles.summary}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.label}>THIS SESSION</Text>
           <Text style={styles.total}>{fmtMoney(sessionValue)}</Text>
         </View>
-        <View>
+        <View style={styles.countCol}>
           <Text style={styles.label}>CARDS</Text>
           <Text style={styles.count}>{sessionCount}</Text>
         </View>
         <Pressable
-          style={[styles.pill, scanning ? styles.scanOn : styles.scanOff]}
+          style={({ pressed }) => [
+            styles.pill, scanning ? styles.scanOn : styles.scanOff,
+            pressed && { opacity: 0.75 },
+          ]}
           onPress={() => {
             const next = !scanning;
             setScanning(next);
             setDiag(next ? 'scanning ON — point at a card' : 'scanning OFF — camera only');
           }}
         >
-          <Text style={styles.btnText}>{scanning ? 'Pause' : 'Scan'}</Text>
+          {scanning
+            ? <View style={styles.pauseGlyph}><View style={styles.pauseBar} /><View style={styles.pauseBar} /></View>
+            : <ScanIcon size={16} color={c.onAccent} strong />}
+          <Text style={[styles.pillText, !scanning && { color: c.onAccent }]}>
+            {scanning ? 'Pause' : 'Resume'}
+          </Text>
         </Pressable>
       </View>
 
       <View style={styles.feedWrap}>
         {recent.length ? (
           <>
-            <Text style={styles.feedHead}>JUST SCANNED</Text>
+            <View style={styles.feedHeadRow}>
+              <Text style={styles.feedHead}>JUST SCANNED</Text>
+              <Pressable onPress={onOpenCollection} hitSlop={8}>
+                <Text style={styles.link}>Open collection</Text>
+              </Pressable>
+            </View>
             {recent.map((x) => (
               <View key={x.key} style={styles.feedRow}>
+                <CardImage
+                  setId={x.setId} number={x.number} rarity={x.rarity} width={32} radius={3}
+                />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.feedName} numberOfLines={1}>{x.name}</Text>
                   <Text style={styles.feedMeta} numberOfLines={1}>
                     {x.set} · #{x.number}
-                    {x.unsure ? '  · check printing' : ''}
                   </Text>
                 </View>
+                {x.unsure ? <Badge label="CHECK" tone="warn" /> : null}
                 <Text style={styles.feedPrice}>{fmtMoney(x.price)}</Text>
               </View>
             ))}
-            <Pressable onPress={onOpenCollection} style={styles.linkWrap}>
-              <Text style={styles.link}>Open collection →</Text>
-            </Pressable>
           </>
         ) : (
-          <Text style={styles.feedIdle}>
-            Fix the phone in place and pass cards through the frame. Each one
-            lands in your collection with its price.
-          </Text>
+          <View style={styles.idleWrap}>
+            <Text style={styles.idleTitle}>Prop the phone up and start passing</Text>
+            <Text style={styles.feedIdle}>
+              Each card lands in your collection with its price. It reads
+              continuously — there is no button to press per card.
+            </Text>
+          </View>
         )}
       </View>
 
@@ -564,23 +633,32 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center',
     padding: sp.xl, gap: sp.md,
   },
-  cameraWrap: { height: '46%', backgroundColor: '#05070c' },
+
+  cameraWrap: { height: '44%', backgroundColor: '#05070c' },
   guideWrap: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center',
   },
-  guide: {
-    height: '86%', aspectRatio: 2.5 / 3.5, borderRadius: 10,
-    borderWidth: 2, borderColor: 'rgba(231,236,245,0.35)',
-  },
-  guideNear: { borderColor: c.warn },
-  guideGood: { borderColor: c.good },
+  guide: { height: '82%', aspectRatio: 2.5 / 3.5 },
+  corner: { position: 'absolute', width: 30, height: 30, borderWidth: 3 },
+  cornerTop: { borderBottomWidth: 0 },
+  cornerBottom: { borderTopWidth: 0 },
+  cornerLeft: { borderRightWidth: 0, borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
+  cornerRight: { borderLeftWidth: 0, borderTopRightRadius: 10, borderBottomRightRadius: 10 },
+
   hud: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, padding: sp.md,
-    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(5,7,12,0.6)',
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    paddingHorizontal: sp.md, paddingVertical: sp.sm,
+    flexDirection: 'row', alignItems: 'center', gap: sp.sm,
+    backgroundColor: 'rgba(5,7,12,0.72)',
   },
   hudText: { ...ty.body, color: c.text, flex: 1 },
-  hudDim: { ...ty.tiny, color: c.dim },
+  hudSub: { ...ty.tiny, color: c.dim, marginTop: 1 },
+  fps: {
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: rd.sm,
+    borderWidth: 1, borderColor: c.line, backgroundColor: 'rgba(8,9,13,0.6)',
+  },
+  fpsText: { ...ty.tiny, color: c.dim, fontVariant: ['tabular-nums'] },
 
   summary: {
     flexDirection: 'row', alignItems: 'center', gap: sp.lg,
@@ -588,36 +666,46 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: c.lineSoft,
   },
   label: { ...ty.section, color: c.faint },
-  total: { fontSize: 26, fontWeight: '800', color: c.money, letterSpacing: -0.5 },
-  count: { fontSize: 22, fontWeight: '700', color: c.text },
+  total: {
+    fontSize: 26, fontWeight: '800', color: c.money, letterSpacing: -0.6,
+    fontVariant: ['tabular-nums'], marginTop: 2,
+  },
+  countCol: { alignItems: 'flex-end' },
+  count: {
+    fontSize: 22, fontWeight: '800', color: c.text, fontVariant: ['tabular-nums'],
+    marginTop: 2,
+  },
   pill: {
-    marginLeft: 'auto', paddingHorizontal: sp.xl, paddingVertical: 11,
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: sp.lg, paddingVertical: 11,
     borderRadius: rd.pill, borderWidth: 1,
   },
-  scanOn: { backgroundColor: c.goodBg, borderColor: c.good },
-  scanOff: { backgroundColor: c.accentDim, borderColor: '#2563eb' },
-  btnText: { ...ty.body, color: c.text, fontWeight: '800' },
+  scanOn: { backgroundColor: c.surfaceHi, borderColor: c.line },
+  scanOff: { backgroundColor: c.accent, borderColor: c.accent },
+  pillText: { ...ty.body, color: c.text, fontWeight: '800' },
+  pauseGlyph: { flexDirection: 'row', gap: 3 },
+  pauseBar: { width: 3.5, height: 13, borderRadius: 2, backgroundColor: c.text },
 
   feedWrap: { flex: 1, paddingHorizontal: sp.lg, paddingTop: sp.md },
-  feedHead: { ...ty.section, color: c.faint, marginBottom: sp.sm },
+  feedHeadRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: sp.sm,
+  },
+  feedHead: { ...ty.section, color: c.faint },
   feedRow: {
-    flexDirection: 'row', alignItems: 'center', gap: sp.md, paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center', gap: sp.md, paddingVertical: 7,
     borderBottomWidth: 1, borderBottomColor: c.lineSoft,
   },
   feedName: { ...ty.body, color: c.text },
   feedMeta: { ...ty.meta, color: c.dim, marginTop: 1 },
-  feedPrice: { ...ty.body, color: c.money },
-  linkWrap: { paddingVertical: sp.md },
-  link: { ...ty.meta, color: c.accent, fontWeight: '700' },
-  feedIdle: { ...ty.meta, color: c.faint, textAlign: 'center', lineHeight: 19, padding: sp.xl },
+  feedPrice: { ...ty.money, color: c.money },
+  link: { ...ty.tiny, color: c.accent, fontWeight: '800' },
+  idleWrap: { paddingTop: sp.xl, paddingHorizontal: sp.md, gap: sp.sm },
+  idleTitle: { ...ty.subtitle, color: c.text, textAlign: 'center' },
+  feedIdle: { ...ty.meta, color: c.faint, textAlign: 'center', lineHeight: 19 },
 
   title: { ...ty.title, color: c.text },
-  muted: { ...ty.meta, color: c.dim, textAlign: 'center' },
-  err: { ...ty.body, color: c.bad },
-  btn: {
-    backgroundColor: c.accentDim, borderRadius: rd.md,
-    paddingVertical: 11, paddingHorizontal: 18, marginTop: sp.sm,
-  },
+  muted: { ...ty.meta, color: c.dim, textAlign: 'center', lineHeight: 19, maxWidth: 300 },
   diag: { ...ty.tiny, color: c.faint, paddingHorizontal: sp.md, paddingBottom: sp.sm },
   selfTest: {
     paddingHorizontal: sp.md, paddingVertical: sp.sm,

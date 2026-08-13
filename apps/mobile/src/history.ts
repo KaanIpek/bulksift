@@ -115,3 +115,60 @@ export function spark(points: Point[], samples = 40): Array<{ x: number; y: numb
     y: (p.value - lo) / (hi - lo),
   }));
 }
+
+export interface Series {
+  points: Array<{ x: number; y: number }>;
+  /** The real values at the bottom and top of the plot, for the axis. */
+  low: number;
+  high: number;
+  /** First and last day in the window, for the captions under it. */
+  from: string;
+  to: string;
+  /** How many days the window actually holds. */
+  days: number;
+}
+
+/**
+ * The last `days` of history, ready to plot, or null when there is too little.
+ *
+ * `days` of Infinity means everything. The window is taken from the end rather
+ * than from a date, because a gap in recording - the app not opened for a week
+ * - should not blank the chart; the points that exist are the points shown.
+ */
+export function series(points: Point[], days: number, samples = 46): Series | null {
+  if (points.length < 2) return null;
+  const cutoff = Number.isFinite(days)
+    ? dayOf(Date.parse(`${points[points.length - 1].day}T00:00:00`) - days * 86400000)
+    : '';
+  const win = points.filter((p) => p.day >= cutoff);
+  if (win.length < 2) return null;
+
+  const drawn = spark(win, samples);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const p of win) {
+    if (p.value < lo) lo = p.value;
+    if (p.value > hi) hi = p.value;
+  }
+  // spark() pads the range so a flat line does not sit on the floor; the axis
+  // labels have to report the same padded range or they would not match the
+  // heights drawn against them.
+  const pad = hi === lo ? Math.max(1, Math.abs(hi) * 0.1) : (hi - lo) * 0.12;
+  return {
+    points: drawn,
+    low: lo - pad,
+    high: hi + pad,
+    from: win[0].day,
+    to: win[win.length - 1].day,
+    days: win.length,
+  };
+}
+
+/** "3 Aug" - short enough for a chart caption. */
+export function shortDay(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  if (!y || !m || !d) return day;
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${d} ${MONTHS[m - 1]}`;
+}

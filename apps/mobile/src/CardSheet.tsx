@@ -5,20 +5,29 @@
  * This is where the scanner's uncertainty gets settled. Every other app in this
  * category picks a printing silently and shows you one price; the measurements
  * here say that is wrong often enough to matter, so when two printings share an
- * illustration the scan says so and this is where you choose - with both prices
- * in front of you, which is the only thing that makes the choice answerable.
+ * illustration the scan says so and this is where you choose - with both cards
+ * and both prices in front of you, which is the only thing that makes the
+ * choice answerable.
+ *
+ * The card's own picture leads, at the size a card is held. Everything below it
+ * is a decision about the object in that picture, and a sheet that opens with a
+ * heading instead makes you take the app's word for which card it means.
  */
 
 import { useMemo } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions,
+} from 'react-native';
 
 import type { CardRecord, PricedVariant } from '@bulksift/core';
 import {
   CONDITIONS, CONDITION_NOTE, GRADED_NOTE, GRADERS, conditionOf, entryValue,
   gradeLabel, type ConditionId, type Entry, type Grade,
 } from './collection';
-import { Button, Chip, SectionLabel } from './ui/parts';
-import { c, money, r, s, t } from './ui/theme';
+import CardImage from './ui/CardImage';
+import { CheckIcon, CloseIcon, TrashIcon } from './ui/icons';
+import { Badge, Button, Chip, SectionLabel, Stepper } from './ui/parts';
+import { c, money, r, rarityTone, s, shadow, t } from './ui/theme';
 
 export interface SheetTarget {
   entry: Entry;
@@ -48,6 +57,7 @@ export default function CardSheet({
   onDelete: (key: string) => void;
 }) {
   const entry = target?.entry ?? null;
+  const { width } = useWindowDimensions();
   const variants = useMemo(
     () => (entry ? variantsFor(entry.cardId) : []),
     [entry, variantsFor],
@@ -56,62 +66,85 @@ export default function CardSheet({
   if (!target || !entry) return null;
   const cond = conditionOf(entry.condition);
   const lineValue = entryValue(entry);
+  const artW = Math.min(132, Math.round(width * 0.34));
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.sheet}>
         <View style={styles.grabber} />
-        <ScrollView contentContainerStyle={{ paddingBottom: s.xxl }}>
-          <Text style={styles.name}>{entry.name}</Text>
-          <Text style={styles.sub}>
-            {entry.setName} · #{entry.number}
-            {entry.rarity ? ` · ${entry.rarity}` : ''}
-          </Text>
+        <Pressable onPress={onClose} hitSlop={10} style={styles.close}>
+          <CloseIcon size={17} color={c.dim} />
+        </Pressable>
 
-          <View style={styles.valueRow}>
-            <Text style={styles.value}>{money(lineValue)}</Text>
-            <Text style={styles.valueNote}>
-              {entry.quantity} × {money(entry.unitPrice)}
-              {cond.multiplier !== 1 ? ` × ${cond.multiplier.toFixed(2)} ${cond.id}` : ''}
-            </Text>
+        <ScrollView contentContainerStyle={{ paddingBottom: s.xxl }}>
+          <View style={styles.head}>
+            <View style={shadow.high}>
+              <CardImage
+                setId={entry.setId} number={entry.number} rarity={entry.rarity}
+                width={artW} hires radius={r.sm}
+              />
+            </View>
+
+            <View style={styles.headBody}>
+              <Text style={styles.name} numberOfLines={2}>{entry.name}</Text>
+              <Text style={styles.sub} numberOfLines={2}>
+                {entry.setName} · #{entry.number}
+              </Text>
+              {entry.rarity ? (
+                <View style={styles.rarityRow}>
+                  <View style={[styles.pip, { backgroundColor: rarityTone(entry.rarity) }]} />
+                  <Text style={styles.rarity}>{entry.rarity}</Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.value}>{money(lineValue)}</Text>
+              <Text style={styles.valueNote}>
+                {entry.quantity} × {money(entry.unitPrice)}
+                {cond.multiplier !== 1 ? ` × ${cond.multiplier.toFixed(2)}` : ''}
+              </Text>
+
+              <View style={styles.headTags}>
+                <Badge label={entry.variant.replace(' Holofoil', ' Holo')} />
+                {entry.grade
+                  ? <Badge label={gradeLabel(entry.grade)} tone="accent" />
+                  : <Badge label={cond.label} />}
+              </View>
+            </View>
           </View>
 
-          {/* Quantity. Big targets - this is used with a card in the other hand. */}
-          <SectionLabel>Quantity</SectionLabel>
           <View style={styles.qtyRow}>
-            <Pressable
-              style={styles.qtyBtn}
-              onPress={() => onQuantity(entry.key, entry.quantity - 1)}
-            >
-              <Text style={styles.qtyGlyph}>−</Text>
-            </Pressable>
-            <Text style={styles.qtyValue}>{entry.quantity}</Text>
-            <Pressable
-              style={styles.qtyBtn}
-              onPress={() => onQuantity(entry.key, entry.quantity + 1)}
-            >
-              <Text style={styles.qtyGlyph}>+</Text>
-            </Pressable>
-            <View style={{ flex: 1 }} />
-            <Button label="Remove" kind="danger" onPress={() => onDelete(entry.key)} />
+            <View>
+              <Text style={styles.qtyLabel}>QUANTITY</Text>
+              <Text style={styles.qtyHint}>How many of this exact pile</Text>
+            </View>
+            <Stepper
+              value={entry.quantity}
+              onChange={(q) => onQuantity(entry.key, q)}
+              min={0}
+              max={999}
+            />
           </View>
 
           {target.alternatives.length ? (
-            <>
+            <View style={styles.decision}>
               <SectionLabel>Which printing?</SectionLabel>
               <Text style={styles.note}>
                 These share an illustration, so the picture alone cannot separate
                 them. Their prices differ, so it is worth a look.
               </Text>
-              <View style={styles.stack}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.printings}
+              >
                 {[
-                  { card: null as CardRecord | null, label: `${entry.setName} · #${entry.number}` },
+                  { card: null as CardRecord | null, setId: entry.setId, number: entry.number,
+                    setName: entry.setName },
                   ...target.alternatives.map((a) => ({
-                    card: a,
-                    label: `${a.S} · #${a.u}`,
+                    card: a, setId: a.s, number: a.u, setName: a.S,
                   })),
-                ].map((opt, i) => {
+                ].map((opt) => {
                   const alt = opt.card;
                   const list = alt ? variantsFor(alt.i) : variants;
                   const best = list.find((v) => v.market != null);
@@ -119,25 +152,31 @@ export default function CardSheet({
                   return (
                     <Pressable
                       key={alt?.i ?? 'current'}
-                      style={[styles.option, isCurrent && styles.optionOn]}
+                      disabled={isCurrent}
                       onPress={() =>
-                        alt
-                          ? onRepoint(entry.key, alt, best?.variant ?? 'Normal', best?.market ?? null)
-                          : undefined
-                      }
+                        alt && onRepoint(
+                          entry.key, alt, best?.variant ?? 'Normal', best?.market ?? null,
+                        )}
+                      style={({ pressed }) => [
+                        styles.printing, isCurrent && styles.printingOn,
+                        pressed && { opacity: 0.7 },
+                      ]}
                     >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.optionText}>{opt.label}</Text>
-                        {isCurrent ? (
-                          <Text style={styles.optionTag}>current pick</Text>
-                        ) : null}
-                      </View>
-                      <Text style={styles.optionPrice}>{money(best?.market ?? null)}</Text>
+                      <CardImage
+                        setId={opt.setId} number={opt.number} width={78} radius={r.sm}
+                      />
+                      {isCurrent ? (
+                        <View style={styles.printingTick}>
+                          <CheckIcon size={13} color={c.accent} strong />
+                        </View>
+                      ) : null}
+                      <Text style={styles.printingSet} numberOfLines={1}>{opt.setName}</Text>
+                      <Text style={styles.printingPrice}>{money(best?.market ?? null)}</Text>
                     </Pressable>
                   );
                 })}
-              </View>
-            </>
+              </ScrollView>
+            </View>
           ) : null}
 
           <SectionLabel>Printing</SectionLabel>
@@ -219,25 +258,33 @@ export default function CardSheet({
             <>
               <SectionLabel>Market</SectionLabel>
               <View style={styles.table}>
+                <View style={styles.tableHead}>
+                  <Text style={styles.tableKey} />
+                  <Text style={styles.tableCap}>LOW</Text>
+                  <Text style={styles.tableCap}>MARKET</Text>
+                  <Text style={styles.tableCap}>HIGH</Text>
+                </View>
                 {variants.map((v) => (
                   <View key={v.variant} style={styles.tableRow}>
-                    <Text style={styles.tableKey}>{v.variant}</Text>
+                    <Text style={styles.tableKey} numberOfLines={1}>{v.variant}</Text>
                     <Text style={styles.tableLow}>{money(v.low)}</Text>
                     <Text style={styles.tableMid}>{money(v.market)}</Text>
                     <Text style={styles.tableLow}>{money(v.high)}</Text>
                   </View>
                 ))}
-                <View style={styles.tableHead}>
-                  <Text style={styles.tableKey} />
-                  <Text style={styles.tableCap}>low</Text>
-                  <Text style={styles.tableCap}>market</Text>
-                  <Text style={styles.tableCap}>high</Text>
-                </View>
               </View>
             </>
           ) : null}
 
-          <Button label="Done" kind="primary" onPress={onClose} />
+          <View style={styles.actions}>
+            <Button
+              label="Remove pile"
+              kind="danger"
+              onPress={() => onDelete(entry.key)}
+              icon={<TrashIcon size={15} color={c.bad} />}
+            />
+            <Button label="Done" kind="primary" onPress={onClose} grow />
+          </View>
         </ScrollView>
       </View>
     </Modal>
@@ -245,53 +292,90 @@ export default function CardSheet({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(3,5,10,0.6)' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(3,5,10,0.68)' },
   sheet: {
     backgroundColor: c.bg,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     borderColor: c.line,
     paddingHorizontal: s.lg,
     paddingTop: s.sm,
-    maxHeight: '86%',
+    maxHeight: '90%',
   },
   grabber: {
     alignSelf: 'center', width: 38, height: 4, borderRadius: 2,
     backgroundColor: c.line, marginBottom: s.md,
   },
-  name: { ...t.title, color: c.text },
-  sub: { ...t.meta, color: c.dim, marginTop: 2 },
-  valueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: s.sm, marginVertical: s.lg },
-  value: { fontSize: 30, fontWeight: '800', color: c.money, letterSpacing: -0.5 },
-  valueNote: { ...t.meta, color: c.faint, paddingBottom: 5 },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: s.md, marginBottom: s.xl },
-  qtyBtn: {
-    width: 48, height: 48, borderRadius: r.md, backgroundColor: c.surfaceHi,
-    borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center',
+  close: {
+    position: 'absolute', right: s.md, top: s.md, zIndex: 5,
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: c.surfaceHi, borderWidth: 1, borderColor: c.line,
   },
-  qtyGlyph: { fontSize: 24, fontWeight: '700', color: c.text, lineHeight: 28 },
-  qtyValue: { fontSize: 22, fontWeight: '800', color: c.text, minWidth: 34, textAlign: 'center' },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: s.sm, marginBottom: s.md },
-  stack: { gap: s.sm, marginBottom: s.lg },
-  option: {
-    flexDirection: 'row', alignItems: 'center', gap: s.md,
-    padding: s.md, borderRadius: r.md,
-    backgroundColor: c.surface, borderWidth: 1, borderColor: c.line,
+
+  head: { flexDirection: 'row', gap: s.lg, marginBottom: s.xl, paddingRight: 34 },
+  headBody: { flex: 1 },
+  name: { ...t.title, fontSize: 22, color: c.text },
+  sub: { ...t.meta, color: c.dim, marginTop: 3 },
+  rarityRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+  pip: { width: 6, height: 6, borderRadius: 3 },
+  rarity: { ...t.tiny, color: c.faint },
+  value: {
+    fontSize: 30, fontWeight: '800', color: c.money, letterSpacing: -0.7,
+    fontVariant: ['tabular-nums'], marginTop: s.md,
   },
-  optionOn: { borderColor: c.accent, backgroundColor: c.surfaceHi },
-  optionText: { ...t.body, color: c.text },
-  optionTag: { ...t.tiny, color: c.accent, marginTop: 2 },
-  optionPrice: { ...t.body, color: c.money },
-  note: { ...t.tiny, color: c.faint, lineHeight: 16, marginBottom: s.lg },
-  table: { marginBottom: s.xl },
+  valueNote: { ...t.tiny, color: c.faint, fontVariant: ['tabular-nums'], marginTop: 2 },
+  headTags: { flexDirection: 'row', gap: 5, marginTop: s.sm, flexWrap: 'wrap' },
+
+  qtyRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: c.surface, borderRadius: r.lg, borderWidth: 1, borderColor: c.lineSoft,
+    padding: s.md, marginBottom: s.xl,
+  },
+  qtyLabel: { ...t.section, color: c.dim },
+  qtyHint: { ...t.tiny, color: c.faint, marginTop: 3 },
+
+  decision: {
+    backgroundColor: 'rgba(251,191,36,0.06)',
+    borderWidth: 1, borderColor: 'rgba(251,191,36,0.25)',
+    borderRadius: r.lg, padding: s.md, marginBottom: s.xl,
+  },
+  printings: { gap: s.md, paddingRight: s.md },
+  printing: { width: 78, alignItems: 'center' },
+  printingOn: { opacity: 1 },
+  printingTick: {
+    position: 'absolute', top: 4, right: 4,
+    width: 20, height: 20, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(8,9,13,0.85)',
+  },
+  printingSet: { ...t.tiny, color: c.dim, marginTop: 6, textAlign: 'center' },
+  printingPrice: {
+    ...t.tiny, color: c.money, fontWeight: '800', fontVariant: ['tabular-nums'],
+  },
+
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: s.md },
+  note: { ...t.tiny, color: c.faint, lineHeight: 16, marginBottom: s.md },
+
+  table: {
+    marginBottom: s.xl, backgroundColor: c.surface, borderRadius: r.md,
+    borderWidth: 1, borderColor: c.lineSoft, paddingHorizontal: s.md,
+  },
   tableRow: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 9,
-    borderBottomWidth: 1, borderBottomColor: c.lineSoft,
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 10,
+    borderTopWidth: 1, borderTopColor: c.lineSoft,
   },
-  tableHead: { flexDirection: 'row', paddingTop: 6 },
-  tableKey: { ...t.meta, color: c.dim, flex: 1 },
-  tableMid: { ...t.body, color: c.money, width: 78, textAlign: 'right' },
-  tableLow: { ...t.meta, color: c.faint, width: 70, textAlign: 'right' },
-  tableCap: { ...t.tiny, color: c.faint, width: 74, textAlign: 'right' },
+  tableHead: { flexDirection: 'row', paddingTop: 9, paddingBottom: 3 },
+  tableKey: { ...t.meta, color: c.dim, flex: 1, paddingRight: 6 },
+  tableMid: {
+    ...t.money, color: c.money, width: 74, textAlign: 'right',
+  },
+  tableLow: {
+    ...t.meta, color: c.faint, width: 66, textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
+  tableCap: { ...t.section, fontSize: 9.5, color: c.faint, width: 70, textAlign: 'right' },
+
+  actions: { flexDirection: 'row', gap: s.sm },
 });
