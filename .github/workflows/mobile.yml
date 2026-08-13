@@ -147,11 +147,27 @@ jobs:
         run: pod install --repo-update
 
       - name: Install the App Store Connect key
+        env:
+          KEY_B64: ${{ secrets.ASC_KEY_P8_B64 }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
         run: |
           mkdir -p ~/private_keys
-          echo "${{ secrets.ASC_KEY_P8_B64 }}" | base64 -d \
-            > ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
-          chmod 600 ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+          # Keep only base64's own alphabet before decoding.
+          #
+          # A secret set from a Windows shell arrives with a trailing
+          # carriage return. That is not a base64 character, so macOS's
+          # base64 rejects the entire stream with "error decoding base64
+          # input stream" - a message that points at the key rather than at
+          # the line ending which actually broke it.
+          printf '%s' "$KEY_B64" | tr -dc 'A-Za-z0-9+/=' | base64 -d > ~/private_keys/AuthKey_${KEY_ID}.p8
+          chmod 600 ~/private_keys/AuthKey_${KEY_ID}.p8
+          # Fail here, in one sentence, rather than during signing under a
+          # wall of Xcode output. Nothing is printed either way.
+          if ! head -1 ~/private_keys/AuthKey_${KEY_ID}.p8 | grep -q 'BEGIN PRIVATE KEY'; then
+            echo "ASC_KEY_P8_B64 did not decode to a PEM private key."
+            exit 1
+          fi
+          echo "key installed"
 
       - name: Archive (unsigned)
         working-directory: apps/mobile/ios
