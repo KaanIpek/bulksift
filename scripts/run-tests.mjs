@@ -79,6 +79,7 @@ const SUITE = [
   // what may cross the worklet boundary.
   { name: 'frame', dir: mobileTestDir, needs: [] },
   { name: 'collection', dir: mobileTestDir, needs: [] },
+  { name: 'history', dir: mobileTestDir, needs: [] },
   { name: 'workimage', dir: mobileTestDir, needs: [] },
   { name: 'worklet-payload', dir: mobileTestDir, needs: [] },
 ];

@@ -14,7 +14,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import type { CardRecord, PricedVariant } from '@bulksift/core';
 import {
-  CONDITIONS, CONDITION_NOTE, conditionOf, entryValue, type ConditionId, type Entry,
+  CONDITIONS, CONDITION_NOTE, GRADED_NOTE, GRADERS, conditionOf, entryValue,
+  gradeLabel, type ConditionId, type Entry, type Grade,
 } from './collection';
 import { Button, Chip, SectionLabel } from './ui/parts';
 import { c, money, r, s, t } from './ui/theme';
@@ -33,6 +34,7 @@ export default function CardSheet({
   onCondition,
   onVariant,
   onRepoint,
+  onGrade,
   onDelete,
 }: {
   target: SheetTarget | null;
@@ -42,6 +44,7 @@ export default function CardSheet({
   onCondition: (key: string, condition: ConditionId) => void;
   onVariant: (key: string, variant: string, price: number | null) => void;
   onRepoint: (key: string, card: CardRecord, variant: string, price: number | null) => void;
+  onGrade: (key: string, grade: Grade | null) => void;
   onDelete: (key: string) => void;
 }) {
   const entry = target?.entry ?? null;
@@ -153,18 +156,64 @@ export default function CardSheet({
             )}
           </View>
 
-          <SectionLabel>Condition</SectionLabel>
+          {/*
+            Condition and grade are the same axis from the market's point of
+            view - a slab's grade already says what state it is in - so only
+            one of them is offered at a time.
+          */}
+          {entry.grade ? null : (
+            <>
+              <SectionLabel>Condition</SectionLabel>
+              <View style={styles.wrap}>
+                {CONDITIONS.map((k) => (
+                  <Chip
+                    key={k.id}
+                    label={
+                      k.id === 'NM' ? k.label : `${k.label} ·${Math.round(k.multiplier * 100)}%`
+                    }
+                    active={k.id === entry.condition}
+                    onPress={() => onCondition(entry.key, k.id)}
+                  />
+                ))}
+              </View>
+              <Text style={styles.note}>{CONDITION_NOTE}</Text>
+            </>
+          )}
+
+          <SectionLabel>Graded slab</SectionLabel>
           <View style={styles.wrap}>
-            {CONDITIONS.map((k) => (
+            <Chip
+              label="Raw"
+              active={!entry.grade}
+              onPress={() => onGrade(entry.key, null)}
+            />
+            {GRADERS.map((g) => (
               <Chip
-                key={k.id}
-                label={k.id === 'NM' ? k.label : `${k.label} ·${Math.round(k.multiplier * 100)}%`}
-                active={k.id === entry.condition}
-                onPress={() => onCondition(entry.key, k.id)}
+                key={g}
+                label={g}
+                active={entry.grade?.grader === g}
+                onPress={() =>
+                  onGrade(entry.key, { grader: g, score: entry.grade?.score ?? 10 })}
               />
             ))}
           </View>
-          <Text style={styles.note}>{CONDITION_NOTE}</Text>
+          {entry.grade ? (
+            <>
+              <View style={styles.wrap}>
+                {[10, 9.5, 9, 8.5, 8, 7, 6, 5].map((v) => (
+                  <Chip
+                    key={v}
+                    label={String(v)}
+                    active={entry.grade?.score === v}
+                    onPress={() => onGrade(entry.key, { grader: entry.grade!.grader, score: v })}
+                  />
+                ))}
+              </View>
+              <Text style={styles.note}>
+                {gradeLabel(entry.grade)} — {GRADED_NOTE}
+              </Text>
+            </>
+          ) : null}
 
           {variants.length ? (
             <>

@@ -27,6 +27,8 @@ export default function BrowseScreen({
   setNameFor,
   onClearSetFilter,
   onAdd,
+  wishedIds,
+  onWish,
 }: {
   cards: CardRecord[];
   variantsFor: (cardId: string) => PricedVariant[];
@@ -35,6 +37,8 @@ export default function BrowseScreen({
   setNameFor: (setId: string) => string;
   onClearSetFilter: () => void;
   onAdd: (card: CardRecord, variant: string, price: number | null) => void;
+  wishedIds: Set<string>;
+  onWish: (card: CardRecord, price: number | null) => void;
 }) {
   const [query, setQuery] = useState('');
   const deferred = useDeferredValue(query);
@@ -108,6 +112,16 @@ export default function BrowseScreen({
               </View>
               <Text style={styles.price}>{money(best?.market ?? null)}</Text>
               <Pressable
+                style={({ pressed }) => [
+                  styles.want, wishedIds.has(item.i) && styles.wantOn, pressed && { opacity: 0.6 },
+                ]}
+                onPress={() => onWish(item, best?.market ?? null)}
+              >
+                <Text style={[styles.wantText, wishedIds.has(item.i) && styles.wantTextOn]}>
+                  {wishedIds.has(item.i) ? '★' : '☆'}
+                </Text>
+              </Pressable>
+              <Pressable
                 style={({ pressed }) => [styles.add, pressed && { opacity: 0.6 }]}
                 onPress={() => onAdd(item, best?.variant ?? 'Normal', best?.market ?? null)}
               >
@@ -165,5 +179,12 @@ const styles = StyleSheet.create({
     backgroundColor: c.surfaceHi, borderWidth: 1, borderColor: c.line,
   },
   addText: { ...t.tiny, color: c.text, fontWeight: '700' },
+  want: {
+    width: 32, height: 32, borderRadius: r.pill, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: c.surfaceHi, borderWidth: 1, borderColor: c.line,
+  },
+  wantOn: { borderColor: c.warn, backgroundColor: 'rgba(251,191,36,0.14)' },
+  wantText: { fontSize: 15, color: c.faint, lineHeight: 18 },
+  wantTextOn: { color: c.warn },
   more: { ...t.tiny, color: c.faint, textAlign: 'center', padding: s.lg },
 });

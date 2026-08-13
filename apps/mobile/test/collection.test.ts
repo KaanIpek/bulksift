@@ -12,8 +12,8 @@
  */
 
 import {
-  addScan, bySet, conditionOf, entryValue, reclassify, repoint, setQuantity,
-  toCsv, totalCards, totalValue, type Entry,
+  addScan, bySet, conditionOf, entryValue, gradeLabel, reclassify, regrade,
+  repoint, setQuantity, toCsv, totalCards, totalValue, type Entry,
 } from '../src/collection.ts';
 import type { CardRecord } from '../src/core/types.ts';
 
@@ -112,6 +112,70 @@ const check = (label: string, ok: boolean, detail = '') => {
   check('a comma in a name is quoted', lines[1].includes('"Hisuian Growlithe, Radiant"'), lines[1]);
   check('csv line value uses the condition price',
     lines[1].endsWith(entryValue(e[0]).toFixed(2)), lines[1]);
+}
+
+/*
+ * Grading. A slab is a different pile from the raw card, is not discounted for
+ * condition on top of its grade, and merges when two slabs of the same grade
+ * meet. The grade is deliberately not a price multiplier: there is no graded
+ * price feed on the device, and guessing one would be inventing money.
+ */
+{
+  let e: Entry[] = [];
+  e = addScan(e, card('a', 'Charizard'), 'Holofoil', 100, 'LP', false);
+  check('a played raw card is discounted', Math.abs(entryValue(e[0]) - 85) < 1e-9,
+    `${entryValue(e[0])}`);
+
+  e = regrade(e, e[0].key, { grader: 'PSA', score: 10 });
+  check('grading moves it to its own pile', e.length === 1 && !!e[0].grade,
+    JSON.stringify(e[0].grade));
+  check('a slab is not discounted for condition', Math.abs(entryValue(e[0]) - 100) < 1e-9,
+    `${entryValue(e[0])}`);
+  check('the grade reads back', gradeLabel(e[0].grade!) === 'PSA 10', gradeLabel(e[0].grade!));
+}
+
+// A raw copy and a slab of the same card are separate piles.
+{
+  let e: Entry[] = [];
+  e = addScan(e, card('a', 'Charizard'), 'Holofoil', 100, 'NM', false);
+  e = regrade(e, e[0].key, { grader: 'PSA', score: 9 });
+  e = addScan(e, card('a', 'Charizard'), 'Holofoil', 100, 'NM', false);
+  check('raw and graded stay apart', e.length === 2, `${e.length}`);
+  check('both are counted', totalCards(e) === 2, `${totalCards(e)}`);
+}
+
+// Two slabs of the same grade merge rather than duplicating.
+{
+  let e: Entry[] = [];
+  e = addScan(e, card('a', 'Charizard'), 'Holofoil', 100, 'NM', false);
+  e = regrade(e, e[0].key, { grader: 'BGS', score: 9.5 });
+  e = addScan(e, card('a', 'Charizard'), 'Holofoil', 100, 'NM', false);
+  const rawKey = e.find((x) => !x.grade)!.key;
+  e = regrade(e, rawKey, { grader: 'BGS', score: 9.5 });
+  check('same-grade slabs merge', e.length === 1 && e[0].quantity === 2,
+    `${e.length} entries, qty ${e[0]?.quantity}`);
+  check('half grades render correctly', gradeLabel(e[0].grade!) === 'BGS 9.5',
+    gradeLabel(e[0].grade!));
+}
+
+// Removing a grade puts the card back with the raw pile.
+{
+  let e: Entry[] = [];
+  e = addScan(e, card('a', 'Charizard'), 'Holofoil', 100, 'NM', false);
+  e = addScan(e, card('a', 'Charizard'), 'Holofoil', 100, 'NM', false);
+  e = regrade(e, e[0].key, { grader: 'PSA', score: 10 });
+  e = regrade(e, e[0].key, null);
+  check('ungrading merges back', e.length === 1 && e[0].quantity === 2 && !e[0].grade,
+    `${e.length} entries, qty ${e[0]?.quantity}`);
+}
+
+// The CSV carries the grade in its own column.
+{
+  let e: Entry[] = [];
+  e = addScan(e, card('a', 'Umbreon VMAX'), 'Holofoil', 500, 'NM', false);
+  e = regrade(e, e[0].key, { grader: 'CGC', score: 9 });
+  const row = toCsv(e).split('\n')[1];
+  check('csv has the grade', row.includes('CGC 9'), row);
 }
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');

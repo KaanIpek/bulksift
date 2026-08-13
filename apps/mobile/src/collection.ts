@@ -14,6 +14,7 @@
  */
 
 import type { CardRecord, PricedVariant } from '@bulksift/core';
+import type { Point as HistoryPoint } from './history';
 
 /** TCGplayer's condition ladder, worst to best, with what the market pays. */
 export const CONDITIONS = [
@@ -40,6 +41,35 @@ export const CONDITION_NOTE =
   'Played conditions are estimated from the Near Mint price using standard ' +
   'market ratios. Near Mint prices come straight from TCGplayer.';
 
+/**
+ * Graded slabs, tracked but not priced.
+ *
+ * A graded card is a different asset from the raw one - a PSA 10 routinely goes
+ * for several times the raw price - and every competitor either charges for
+ * graded pricing or omits it. There is no graded price feed here, so inventing
+ * a multiplier would be inventing money. Instead the grade is recorded, the
+ * card is counted, and its value is shown as the raw price with the grade
+ * beside it and a note that the slab is worth more than that.
+ *
+ * That is the honest version: the collection knows what you own, and does not
+ * pretend to know what a slab sells for.
+ */
+export const GRADERS = ['PSA', 'BGS', 'CGC', 'SGC', 'ACE', 'TAG'] as const;
+export type Grader = (typeof GRADERS)[number];
+
+export interface Grade {
+  grader: Grader;
+  /** 1..10, in halves for BGS. Stored as a number so it sorts. */
+  score: number;
+}
+
+export const gradeLabel = (g: Grade) =>
+  `${g.grader} ${Number.isInteger(g.score) ? g.score : g.score.toFixed(1)}`;
+
+export const GRADED_NOTE =
+  'Graded slabs are counted at the raw market price. There is no graded price ' +
+  'feed on the device, and a slab is usually worth considerably more.';
+
 export interface Entry {
   /** Stable key: card id, variant and condition together. */
   key: string;
@@ -60,6 +90,8 @@ export interface Entry {
   updatedAt: number;
   /** Set by the scanner when two printings could not be told apart. */
   needsPrinting?: boolean;
+  /** Present when this pile is a graded slab rather than a raw card. */
+  grade?: Grade;
 }
 
 export interface WishEntry {
@@ -71,20 +103,58 @@ export interface WishEntry {
   addedAt: number;
 }
 
+/** Add or remove a card from the want list. Toggling is the whole interaction. */
+export function toggleWish(
+  list: WishEntry[],
+  card: CardRecord,
+  price: number | null,
+): WishEntry[] {
+  const at = list.findIndex((w) => w.cardId === card.i);
+  if (at >= 0) return list.filter((_, i) => i !== at);
+  return [
+    {
+      cardId: card.i,
+      name: card.n,
+      setName: card.S,
+      number: card.u,
+      unitPrice: price,
+      addedAt: Date.now(),
+    },
+    ...list,
+  ];
+}
+
+/** What the want list would cost to buy at today's prices. */
+export const wishlistValue = (list: WishEntry[]) =>
+  list.reduce((sum, w) => sum + (w.unitPrice ?? 0), 0);
+
 /** The whole file, as written to disk. */
 export interface Persisted {
   version: 1;
   entries: Entry[];
   wishlist: WishEntry[];
+  /** Daily value points, recorded from the day this shipped. See history.ts. */
+  history?: HistoryPoint[];
 }
 
-export const entryKey = (cardId: string, variant: string, condition: ConditionId) =>
-  `${cardId}|${variant}|${condition}`;
+export const entryKey = (
+  cardId: string,
+  variant: string,
+  condition: ConditionId,
+  grade?: Grade,
+) => `${cardId}|${variant}|${condition}${grade ? `|${grade.grader}${grade.score}` : ''}`;
 
-/** What one entry is worth: price for the variant, scaled by condition. */
+/**
+ * What one entry is worth: price for the variant, scaled by condition.
+ *
+ * A graded slab is not discounted - the grade already describes its state, and
+ * applying a played multiplier on top would be wrong twice over. It is also not
+ * marked up, because nothing here knows what a slab sells for.
+ */
 export function entryValue(e: Entry): number {
   if (e.unitPrice == null) return 0;
-  return e.unitPrice * conditionOf(e.condition).multiplier * e.quantity;
+  const multiplier = e.grade ? 1 : conditionOf(e.condition).multiplier;
+  return e.unitPrice * multiplier * e.quantity;
 }
 
 export function totalValue(entries: Entry[]): number {
@@ -161,6 +231,26 @@ export function setQuantity(entries: Entry[], key: string, quantity: number): En
   );
 }
 
+/** Set or clear the grade on an entry, merging if that pile already exists. */
+export function regrade(entries: Entry[], key: string, grade: Grade | null): Entry[] {
+  const from = entries.find((e) => e.key === key);
+  if (!from) return entries;
+  const next = grade ?? undefined;
+  const newKey = entryKey(from.cardId, from.variant, from.condition, next);
+  if (newKey === from.key) return entries;
+
+  const rest = entries.filter((e) => e.key !== key);
+  const collide = rest.find((e) => e.key === newKey);
+  const merged: Entry = {
+    ...from,
+    key: newKey,
+    grade: next,
+    quantity: from.quantity + (collide?.quantity ?? 0),
+    updatedAt: Date.now(),
+  };
+  return [merged, ...rest.filter((e) => e.key !== newKey)];
+}
+
 /** Move an entry to a different variant or condition, merging on collision. */
 export function reclassify(
   entries: Entry[],
@@ -172,7 +262,7 @@ export function reclassify(
   const variant = next.variant ?? from.variant;
   const condition = next.condition ?? from.condition;
   const unitPrice = next.unitPrice !== undefined ? next.unitPrice : from.unitPrice;
-  const newKey = entryKey(from.cardId, variant, condition);
+  const newKey = entryKey(from.cardId, variant, condition, from.grade);
 
   const rest = entries.filter((e) => e.key !== key);
   const collide = rest.find((e) => e.key === newKey);
@@ -199,7 +289,7 @@ export function repoint(
 ): Entry[] {
   const from = entries.find((e) => e.key === key);
   if (!from) return entries;
-  const newKey = entryKey(card.i, variant, from.condition);
+  const newKey = entryKey(card.i, variant, from.condition, from.grade);
   const rest = entries.filter((e) => e.key !== key);
   const collide = rest.find((e) => e.key === newKey);
   const merged: Entry = {
@@ -258,7 +348,7 @@ export function toCsv(entries: Entry[]): string {
   };
   const rows = [
     ['Quantity', 'Name', 'Set', 'Number', 'Rarity', 'Variant', 'Condition',
-      'Unit Price (NM)', 'Line Value'].join(','),
+      'Grade', 'Unit Price (NM)', 'Line Value'].join(','),
   ];
   for (const e of entries) {
     rows.push([
@@ -268,7 +358,8 @@ export function toCsv(entries: Entry[]): string {
       cell(e.number),
       cell(e.rarity),
       cell(e.variant),
-      cell(conditionOf(e.condition).label),
+      cell(e.grade ? 'Near Mint' : conditionOf(e.condition).label),
+      cell(e.grade ? gradeLabel(e.grade) : ''),
       cell(e.unitPrice == null ? '' : e.unitPrice.toFixed(2)),
       cell(entryValue(e).toFixed(2)),
     ].join(','));

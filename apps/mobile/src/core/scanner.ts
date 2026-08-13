@@ -9,8 +9,8 @@
 
 import { CANON_H, CANON_W, describe, describeStrip } from './descriptor.ts';
 import {
-  detectCard, rectify, rotate180, sameView, scaleQuad,
-  type Detection, type LumaSource, type WorkImage,
+  detectCard, rectifyFrom, rotate180, sameView, scaleQuad, sourceOf,
+  type Detection, type LumaSource, type PixelSource, type WorkImage,
 } from './detect.ts';
 import { CardIndex, type Candidate, type MatchResult } from './matcher.ts';
 import {
@@ -199,7 +199,12 @@ export class Scanner {
     channels: 3 | 4 = 4,
     work?: WorkImage,
     refineSource?: LumaSource & { scale: number },
+    pixels?: PixelSource,
   ): FrameResult {
+    // Where the card's own pixels are read from. A caller that already has the
+    // frame in some interleaved layout hands it over as-is; anything else is
+    // treated as a tidy RGB/RGBA buffer.
+    const src = pixels ?? sourceOf(rgba, width, height, channels);
     const timings = { detect: 0, describe: 0, search: 0, total: 0, reused: 0 };
     this.frameNo++;
 
@@ -258,8 +263,8 @@ export class Scanner {
       : [this.scaleBias];
     this.sinceCalibration = calibrating ? 0 : this.sinceCalibration + 1;
 
-    let upright = rectify(
-      rgba, width, height, scaleQuad(detection.quad, biases[0]), CANON_W, CANON_H, channels,
+    let upright = rectifyFrom(
+      src, scaleQuad(detection.quad, biases[0]), CANON_W, CANON_H,
     );
     let oriented = this.preferFlipped ? rotate180(upright, CANON_W, CANON_H) : upright;
     let canonical = oriented;
@@ -271,8 +276,8 @@ export class Scanner {
       let bestBias = biases[0];
       let bestD = this.index.search(qa).best.distance;
       for (let i = 1; i < biases.length; i++) {
-        const up = rectify(
-          rgba, width, height, scaleQuad(detection.quad, biases[i]), CANON_W, CANON_H, channels,
+        const up = rectifyFrom(
+          src, scaleQuad(detection.quad, biases[i]), CANON_W, CANON_H,
         );
         const or = this.preferFlipped ? rotate180(up, CANON_W, CANON_H) : up;
         const q = describe(or);
@@ -453,7 +458,9 @@ export class Scanner {
       channels,
     });
     if (!detection) return null;
-    const upright = rectify(rgba, width, height, detection.quad, CANON_W, CANON_H, channels);
+    const upright = rectifyFrom(
+      sourceOf(rgba, width, height, channels), detection.quad, CANON_W, CANON_H,
+    );
     const qa = describe(upright);
     let result = this.index.search(qa);
     let query = qa;

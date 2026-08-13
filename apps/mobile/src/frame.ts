@@ -186,3 +186,103 @@ export function toPackedRgb(
     gray, grayW: gW, grayH: gH, grayScale: gStep,
   };
 }
+
+export interface WorkGrid {
+  gray: Float32Array;
+  w: number;
+  h: number;
+  /** Camera pixels each grid cell spans, i.e. the coordinate scale. */
+  scale: number;
+}
+
+export interface CameraPixels {
+  data: Uint8Array;
+  width: number;
+  height: number;
+  bytesPerRow: number;
+  bytesPerPixel: number;
+  rOff: number;
+  gOff: number;
+  bOff: number;
+}
+
+/**
+ * Read the frame once, and only for what is actually used.
+ *
+ * The old path copied every frame into a tidy 960x540 RGB image, then the
+ * detector reduced that to a 320-wide grey grid, and the recogniser sampled
+ * 240x336 points from it. The middle image was the only thing that cost real
+ * work - 1.5 MB written per frame - and on a frame whose card was already
+ * recognised nothing ever read it.
+ *
+ * So it is gone. This builds the grid alone, straight from the camera buffer,
+ * with the same arithmetic as before: a 3x3 box over every second pixel, which
+ * is exactly what averaging the subsampled copy came to. Rectification reads
+ * the camera buffer directly, which is also sharper than the copy was.
+ */
+export function toWorkGrid(
+  src: Uint8Array,
+  info: FrameInfo,
+  workWidth = 320,
+  sampleStep = 2,
+): { pixels: CameraPixels; grid: WorkGrid } {
+  const { width, height, bytesPerRow } = info;
+  if (!width || !height) throw new Error(`frame has no size (${width}x${height})`);
+
+  let layout = layoutFor(info.pixelFormat);
+  if (!layout) {
+    throw new Error(
+      `unsupported pixel format "${info.pixelFormat}" - the frame output must be ` +
+      `asked for an interleaved RGB format`,
+    );
+  }
+  if (info.pixelFormat === 'rgb-rgb-8-bit' && bytesPerRow >= width * 4) {
+    layout = { ...layout, bytesPerPixel: 4 };
+  }
+  const bpp = layout.bytesPerPixel;
+  const stride = bytesPerRow > 0 ? bytesPerRow : width * bpp;
+  if (src.length < stride * height) {
+    throw new Error(
+      `frame buffer is ${src.length} bytes but ${info.pixelFormat} at ` +
+      `${width}x${height} with stride ${stride} needs ${stride * height}`,
+    );
+  }
+
+  // How many camera pixels one grid cell spans. `sampleStep` is how many of
+  // those are actually read - the rest are skipped, as the old subsample did.
+  const cell = Math.max(sampleStep, Math.round(width / workWidth / sampleStep) * sampleStep);
+  const gW = Math.floor(width / cell);
+  const gH = Math.floor(height / cell);
+  const taps = Math.max(1, Math.floor(cell / sampleStep));
+  const inv = 1 / (taps * taps);
+
+  const gray = new Float32Array(gW * gH);
+  const { r, g, b } = layout;
+  const rowStep = stride * sampleStep;
+  const colStep = bpp * sampleStep;
+
+  for (let cy = 0; cy < gH; cy++) {
+    const topRow = cy * cell * stride;
+    for (let cx = 0; cx < gW; cx++) {
+      let sum = 0;
+      let rowBase = topRow;
+      const left = cx * cell * bpp;
+      for (let ty = 0; ty < taps; ty++, rowBase += rowStep) {
+        let p = rowBase + left;
+        for (let tx = 0; tx < taps; tx++, p += colStep) {
+          sum += (77 * src[p + r] + 150 * src[p + g] + 29 * src[p + b]) >> 8;
+        }
+      }
+      gray[cy * gW + cx] = sum * inv;
+    }
+  }
+
+  return {
+    pixels: {
+      data: src, width, height,
+      bytesPerRow: stride, bytesPerPixel: bpp,
+      rOff: r, gOff: g, bOff: b,
+    },
+    grid: { gray, w: gW, h: gH, scale: cell },
+  };
+}

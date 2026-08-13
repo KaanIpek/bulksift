@@ -13,8 +13,11 @@ import {
 } from 'react-native';
 
 import {
-  conditionOf, entryValue, toCsv, totalCards, totalValue, type Entry,
+  conditionOf, entryValue, gradeLabel, toCsv, totalCards, totalValue,
+  type Entry, type WishEntry,
 } from './collection';
+import { changeOver, spark, type Point } from './history';
+import Sparkline from './ui/Sparkline';
 import { Button, Chip, Empty, Stat } from './ui/parts';
 import { c, money, moneyShort, plural, r, s, t } from './ui/theme';
 
@@ -29,13 +32,24 @@ const SORTS: Array<{ id: Sort; label: string }> = [
 
 export default function CollectionScreen({
   entries,
+  history,
+  wishlist,
+  wishlistValue,
   onOpen,
   onScan,
+  onBrowse,
+  onUnwish,
 }: {
   entries: Entry[];
+  history: Point[];
+  wishlist: WishEntry[];
+  wishlistValue: number;
   onOpen: (entry: Entry) => void;
   onScan: () => void;
+  onBrowse: () => void;
+  onUnwish: (cardId: string) => void;
 }) {
+  const [showWishlist, setShowWishlist] = useState(false);
   const [sort, setSort] = useState<Sort>('recent');
   const [query, setQuery] = useState('');
   const [onlyUnsure, setOnlyUnsure] = useState(false);
@@ -87,6 +101,19 @@ export default function CollectionScreen({
   return (
     <View style={styles.root}>
       <View style={styles.header}>
+        {/*
+          The chart is only shown once there is something real to draw. Every
+          competitor sells years of price history; this has one price snapshot,
+          so it plots what it actually measured - the collection's own value,
+          from the first day it was recorded.
+        */}
+        {history.length >= 2 ? (
+          <View style={styles.chartWrap}>
+            <Sparkline points={spark(history)} tone={trendTone(history)} />
+            <Text style={styles.chartNote}>{trendLabel(history)}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.statRow}>
           <Stat label="Collection" value={moneyShort(totalValue(entries))} tone="money" />
           <Stat label="Cards" value={totalCards(entries).toLocaleString('en-US')} />
@@ -108,7 +135,14 @@ export default function CollectionScreen({
         />
 
         <View style={styles.controls}>
-          {SORTS.map((o) => (
+          {wishlist.length ? (
+            <Chip
+              label={showWishlist ? `Owned (${entries.length})` : `Want list (${wishlist.length})`}
+              active={showWishlist}
+              onPress={() => setShowWishlist((v) => !v)}
+            />
+          ) : null}
+          {showWishlist ? null : SORTS.map((o) => (
             <Chip
               key={o.id}
               label={o.label}
@@ -116,7 +150,7 @@ export default function CollectionScreen({
               onPress={() => setSort(o.id)}
             />
           ))}
-          {unsureCount ? (
+          {unsureCount && !showWishlist ? (
             <Chip
               label={`${unsureCount} to check`}
               tone={onlyUnsure ? 'plain' : 'warn'}
@@ -126,6 +160,41 @@ export default function CollectionScreen({
           ) : null}
         </View>
       </View>
+
+      {showWishlist ? (
+        <FlatList
+          data={wishlist}
+          keyExtractor={(w) => w.cardId}
+          contentContainerStyle={wishlist.length ? styles.list : styles.listEmpty}
+          ItemSeparatorComponent={() => <View style={styles.sep} />}
+          renderItem={({ item }) => (
+            <View style={styles.row}>
+              <View style={styles.qtyPill}>
+                <Text style={styles.qtyPillText}>★</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.rowMeta} numberOfLines={1}>
+                  {item.setName} · #{item.number}
+                </Text>
+              </View>
+              <Text style={styles.rowPrice}>{money(item.unitPrice)}</Text>
+              <Pressable onPress={() => onUnwish(item.cardId)} style={styles.dropWrap}>
+                <Text style={styles.drop}>✕</Text>
+              </Pressable>
+            </View>
+          )}
+          ListHeaderComponent={
+            <Text style={styles.wishNote}>
+              {plural(wishlist.length, 'card')} · {money(wishlistValue)} to buy at today's prices
+            </Text>
+          }
+          ListEmptyComponent={
+            <Empty title="Nothing on the want list" hint="Star a card in Browse to add it." />
+          }
+        />
+      ) : (
+      <>
 
       <FlatList
         data={shown}
@@ -146,7 +215,9 @@ export default function CollectionScreen({
               <Text style={styles.rowMeta} numberOfLines={1}>
                 {item.setName} · #{item.number}
                 {item.variant !== 'Normal' ? ` · ${item.variant}` : ''}
-                {item.condition !== 'NM' ? ` · ${conditionOf(item.condition).id}` : ''}
+                {item.grade
+                  ? ` · ${gradeLabel(item.grade)}`
+                  : item.condition !== 'NM' ? ` · ${conditionOf(item.condition).id}` : ''}
               </Text>
               {item.needsPrinting ? (
                 <Text style={styles.rowFlag}>tap to pick the printing</Text>
@@ -177,14 +248,42 @@ export default function CollectionScreen({
         }
       />
 
-      <Pressable style={styles.fab} onPress={onScan}>
-        <Text style={styles.fabText}>Scan</Text>
+      </>
+      )}
+
+      <Pressable style={styles.fab} onPress={showWishlist ? onBrowse : onScan}>
+        <Text style={styles.fabText}>{showWishlist ? 'Browse' : 'Scan'}</Text>
       </Pressable>
     </View>
   );
 }
 
+/** Which way the collection has moved, for the chart's colour. */
+function trendTone(history: Point[]): 'up' | 'down' | 'flat' {
+  const c30 = changeOver(history, 30, Date.now());
+  if (!c30 || Math.abs(c30.delta) < 0.005) return 'flat';
+  return c30.delta > 0 ? 'up' : 'down';
+}
+
+/**
+ * What the chart is actually saying, including how little it may know.
+ *
+ * The span is stated rather than the window asked for. Two days of history
+ * reporting "30 days" would be the kind of confident wrong number this app
+ * exists to avoid.
+ */
+function trendLabel(history: Point[]): string {
+  const ch = changeOver(history, 30, Date.now());
+  if (!ch) return `${history.length} days recorded`;
+  const sign = ch.delta >= 0 ? '+' : '−';
+  const pct = ch.fraction == null ? '' : ` (${sign}${Math.abs(ch.fraction * 100).toFixed(1)}%)`;
+  const days = ch.span === 1 ? 'yesterday' : `${ch.span} days`;
+  return `${sign}${money(Math.abs(ch.delta)).replace('$', '$')}${pct} over ${days}`;
+}
+
 const styles = StyleSheet.create({
+  chartWrap: { gap: 6 },
+  chartNote: { ...t.tiny, color: c.dim },
   root: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingHorizontal: s.lg, paddingTop: s.md, paddingBottom: s.md,
@@ -218,6 +317,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: c.lineSoft,
   },
   footerText: { ...t.meta, color: c.faint, textAlign: 'center' },
+  wishNote: { ...t.meta, color: c.dim, padding: s.lg, paddingBottom: s.sm },
+  dropWrap: { padding: 6 },
+  drop: { ...t.body, color: c.faint },
   fab: {
     position: 'absolute', right: s.lg, bottom: s.lg,
     paddingHorizontal: s.xl, paddingVertical: 14, borderRadius: r.pill,

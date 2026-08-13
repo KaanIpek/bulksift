@@ -856,6 +856,41 @@ function homographyToSource(quad: Quad, outW: number, outH: number): Float64Arra
 }
 
 /** Warp the quad out of the frame into an outW x outH RGBA buffer, bilinear. */
+/**
+ * An interleaved pixel buffer, however it is laid out.
+ *
+ * Rectification samples a fixed 240x336 grid through a homography, so its cost
+ * is its output size and it does not care how big or how oddly arranged the
+ * source is. Letting it read the camera's own buffer removes the only reason
+ * the frame was being copied into a tidy RGB image at all - a 1.5 MB write per
+ * frame that a reused frame never looked at.
+ */
+export interface PixelSource {
+  data: Uint8Array | Uint8ClampedArray;
+  width: number;
+  height: number;
+  bytesPerRow: number;
+  bytesPerPixel: number;
+  rOff: number;
+  gOff: number;
+  bOff: number;
+}
+
+/** A PixelSource over a tightly packed RGB or RGBA buffer. */
+export function sourceOf(
+  data: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  channels: 3 | 4 = 4,
+): PixelSource {
+  return {
+    data, width, height,
+    bytesPerRow: width * channels,
+    bytesPerPixel: channels,
+    rOff: 0, gOff: 1, bOff: 2,
+  };
+}
+
 export function rectify(
   rgba: Uint8ClampedArray | Uint8Array,
   width: number,
@@ -865,6 +900,16 @@ export function rectify(
   outH: number,
   channels: 3 | 4 = 4,
 ): Uint8ClampedArray {
+  return rectifyFrom(sourceOf(rgba, width, height, channels), quad, outW, outH);
+}
+
+export function rectifyFrom(
+  src: PixelSource,
+  quad: Quad,
+  outW: number,
+  outH: number,
+): Uint8ClampedArray {
+  const { data: rgba, width, height, bytesPerRow, bytesPerPixel, rOff, gOff, bOff } = src;
   const H = homographyToSource(quad, outW, outH);
   const out = new Uint8ClampedArray(outW * outH * 4);
   const maxX = width - 1;
@@ -893,21 +938,27 @@ export function rectify(
       const fx = sx - x0;
       const fy = sy - y0;
       const gx = 1 - fx;
-      const row0 = y0 * width;
-      const row1 = y1 * width;
-      const i00 = (row0 + x0) * channels;
-      const i10 = (row0 + x1) * channels;
-      const i01 = (row1 + x0) * channels;
-      const i11 = (row1 + x1) * channels;
+      const row0 = y0 * bytesPerRow;
+      const row1 = y1 * bytesPerRow;
+      const c0 = x0 * bytesPerPixel;
+      const c1 = x1 * bytesPerPixel;
+      const i00 = row0 + c0;
+      const i10 = row0 + c1;
+      const i01 = row1 + c0;
+      const i11 = row1 + c1;
       const w00 = gx * (1 - fy);
       const w10 = fx * (1 - fy);
       const w01 = gx * fy;
       const w11 = fx * fy;
-      out[o] = rgba[i00] * w00 + rgba[i10] * w10 + rgba[i01] * w01 + rgba[i11] * w11;
+      out[o] =
+        rgba[i00 + rOff] * w00 + rgba[i10 + rOff] * w10 +
+        rgba[i01 + rOff] * w01 + rgba[i11 + rOff] * w11;
       out[o + 1] =
-        rgba[i00 + 1] * w00 + rgba[i10 + 1] * w10 + rgba[i01 + 1] * w01 + rgba[i11 + 1] * w11;
+        rgba[i00 + gOff] * w00 + rgba[i10 + gOff] * w10 +
+        rgba[i01 + gOff] * w01 + rgba[i11 + gOff] * w11;
       out[o + 2] =
-        rgba[i00 + 2] * w00 + rgba[i10 + 2] * w10 + rgba[i01 + 2] * w01 + rgba[i11 + 2] * w11;
+        rgba[i00 + bOff] * w00 + rgba[i10 + bOff] * w10 +
+        rgba[i01 + bOff] * w01 + rgba[i11 + bOff] * w11;
       out[o + 3] = 255;
     }
   }

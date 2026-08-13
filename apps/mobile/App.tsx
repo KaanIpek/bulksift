@@ -18,13 +18,27 @@ import type { CardRecord, PricedVariant, ScanHit } from '@bulksift/core';
 import BrowseScreen from './src/BrowseScreen';
 import CardSheet, { type SheetTarget } from './src/CardSheet';
 import CollectionScreen from './src/CollectionScreen';
-import ScannerScreen from './src/ScannerScreen';
+import { Platform } from 'react-native';
+
+/*
+ * The scanner is loaded lazily and only where a camera exists.
+ *
+ * VisionCamera is a Nitro native module - importing it at all on web throws
+ * before anything renders. Deferring the import is what lets the rest of the
+ * app be opened in a browser to work on, which is the only way the interface
+ * gets looked at between 10-minute device builds.
+ */
+const ScannerScreen = Platform.OS === 'web'
+  ? null
+  : (require('./src/ScannerScreen').default as typeof import('./src/ScannerScreen').default);
 import SetsScreen from './src/SetsScreen';
 import {
-  addScan, defaultVariant, entryValue, reclassify, repoint, setQuantity,
-  type ConditionId, type Entry, type WishEntry,
+  addScan, defaultVariant, entryValue, reclassify, regrade, repoint, setQuantity,
+  toggleWish, totalCards, totalValue, wishlistValue,
+  type ConditionId, type Entry, type Grade, type WishEntry,
 } from './src/collection';
 import { loadCollection, saveCollection } from './src/collectionStore';
+import { record, type Point } from './src/history';
 import { loadEngine, type LoadedEngine } from './src/engine';
 import { c, s, t } from './src/ui/theme';
 
@@ -44,6 +58,7 @@ export default function App() {
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [wishlist, setWishlist] = useState<WishEntry[]>([]);
+  const [history, setHistory] = useState<Point[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [setFilter, setSetFilter] = useState<string | null>(null);
@@ -65,6 +80,7 @@ export default function App() {
         if (cancelled) return;
         setEntries(data.entries);
         setWishlist(data.wishlist);
+        setHistory(data.history ?? []);
         setLoaded(true);
       })
       .catch(() => { if (!cancelled) setLoaded(true); });
@@ -82,10 +98,21 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     const id = setTimeout(() => {
-      void saveCollection({ version: 1, entries, wishlist });
+      void saveCollection({ version: 1, entries, wishlist, history });
     }, 700);
     return () => clearTimeout(id);
-  }, [entries, wishlist, loaded]);
+  }, [entries, wishlist, history, loaded]);
+
+  /*
+   * Record today's total whenever it moves.
+   *
+   * `record` returns the same array when the day's numbers have not changed, so
+   * this settles immediately instead of looping through its own state update.
+   */
+  useEffect(() => {
+    if (!loaded) return;
+    setHistory((prev) => record(prev, totalValue(entries), totalCards(entries), Date.now()));
+  }, [entries, loaded]);
 
   const variantsFor = useCallback(
     (cardId: string): PricedVariant[] => engine?.scanner.pricesFor(cardId) ?? [],
@@ -119,14 +146,28 @@ export default function App() {
     setSheet({ entry, alternatives });
   }, [engine]);
 
-  // Keep the open sheet pointing at live data as the collection changes.
+  /*
+   * Keep the open sheet pointing at live data as the collection changes.
+   *
+   * Changing a card's grade, condition or printing changes its key - that is
+   * the point of the key - so following the key alone made the sheet vanish the
+   * moment you used it. It falls back to the same card's most recently touched
+   * pile, which is exactly the one the edit just produced. Resolving an
+   * ambiguous printing changes the card itself, and there the sheet closing is
+   * the right answer: that question has been settled.
+   */
   const sheetTarget = useMemo(() => {
     if (!sheet) return null;
-    const fresh = entries.find((e) => e.key === sheet.entry.key);
-    return fresh ? { ...sheet, entry: fresh } : null;
+    const byKey = entries.find((e) => e.key === sheet.entry.key);
+    if (byKey) return { ...sheet, entry: byKey };
+    const sameCard = entries
+      .filter((e) => e.cardId === sheet.entry.cardId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    return sameCard ? { ...sheet, entry: sameCard } : null;
   }, [sheet, entries]);
 
   const ownedIds = useMemo(() => new Set(entries.map((e) => e.cardId)), [entries]);
+  const wishedIds = useMemo(() => new Set(wishlist.map((w) => w.cardId)), [wishlist]);
   const sessionEntries = useMemo(
     () => entries.filter((e) => e.updatedAt >= sessionStart.current),
     [entries],
@@ -158,20 +199,34 @@ export default function App() {
     <Shell>
       <View style={{ flex: 1 }}>
         {tab === 'scan' ? (
-          <ScannerScreen
-            engine={engine}
-            onHit={onHit}
-            sessionCount={sessionEntries.reduce((n, e) => n + e.quantity, 0)}
-            sessionValue={sessionEntries.reduce((v, e) => v + entryValue(e), 0)}
-            onOpenCollection={() => setTab('collection')}
-          />
+          ScannerScreen ? (
+            <ScannerScreen
+              engine={engine}
+              onHit={onHit}
+              sessionCount={sessionEntries.reduce((n, e) => n + e.quantity, 0)}
+              sessionValue={sessionEntries.reduce((v, e) => v + entryValue(e), 0)}
+              onOpenCollection={() => setTab('collection')}
+            />
+          ) : (
+            <View style={styles.center}>
+              <Text style={styles.muted}>
+                Scanning needs a phone camera. Everything else works here.
+              </Text>
+            </View>
+          )
         ) : null}
 
         {tab === 'collection' ? (
           <CollectionScreen
             entries={entries}
+            history={history}
+            wishlist={wishlist}
+            wishlistValue={wishlistValue(wishlist)}
             onOpen={openEntry}
             onScan={() => setTab('scan')}
+            onBrowse={() => setTab('browse')}
+            onUnwish={(cardId) =>
+              setWishlist((prev) => prev.filter((w) => w.cardId !== cardId))}
           />
         ) : null}
 
@@ -192,6 +247,8 @@ export default function App() {
             setNameFor={(id) => engine.sets.find((x) => x.id === id)?.name ?? 'Set'}
             onClearSetFilter={() => setSetFilter(null)}
             onAdd={addManual}
+            wishedIds={wishedIds}
+            onWish={(card, price) => setWishlist((prev) => toggleWish(prev, card, price))}
           />
         ) : null}
       </View>
@@ -224,6 +281,8 @@ export default function App() {
           setEntries((prev) => reclassify(prev, key, { variant, unitPrice }))}
         onRepoint={(key, card, variant, price) =>
           setEntries((prev) => repoint(prev, key, card, variant, price))}
+        onGrade={(key, grade: Grade | null) =>
+          setEntries((prev) => regrade(prev, key, grade))}
         onDelete={(key) => {
           setEntries((prev) => setQuantity(prev, key, 0));
           setSheet(null);

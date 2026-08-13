@@ -53,7 +53,7 @@ import { createSynchronizable, scheduleOnRN } from 'react-native-worklets';
 import type { CardRecord, ScanHit } from '@bulksift/core';
 import { type LoadedEngine } from './engine';
 import { c, money as fmtMoney, r as rd, s as sp, t as ty } from './ui/theme';
-import { lumaSource, toPackedRgb, type FrameInfo } from './frame';
+import { lumaSource, toWorkGrid, type FrameInfo } from './frame';
 import { runSelfTest } from './selfTest';
 
 /**
@@ -212,16 +212,20 @@ export default function ScannerScreen({
       // asking for less - so it is subsampled to the width everything was
       // measured at on the way through.
       const tPack = Date.now();
-      const frame = toPackedRgb(bytes, info, TARGET_RESOLUTION.width);
+      // One pass over the frame, building only the detector's grid. The card's
+      // own pixels are read straight from the camera buffer when a card is
+      // actually recognised - see toWorkGrid.
+      const { pixels, grid } = toWorkGrid(bytes, info, 320);
       const packMs = Date.now() - tPack;
-      const { rgb, width, height } = frame;
-      // The packed copy is half the camera's size; refinement gets the original.
       const sharp = lumaSource(bytes, info);
       const result = e.scanner.processFrame(
-        rgb, width, height, 3,
-        { gray: frame.gray, w: frame.grayW, h: frame.grayH, scale: frame.grayScale },
-        sharp ? { ...sharp, scale: info.width / width } : undefined,
+        bytes, info.width, info.height, 3,
+        { gray: grid.gray, w: grid.w, h: grid.h, scale: grid.scale },
+        sharp ? { ...sharp, scale: 1 } : undefined,
+        pixels,
       );
+      const width = info.width;
+      const height = info.height;
 
       const st = statsRef.current;
       st.frames++;

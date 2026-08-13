@@ -7,6 +7,7 @@
  * be updated without shipping a new build.
  */
 
+import { Platform } from 'react-native';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -51,8 +52,19 @@ function base64ToBytes(b64: string): Uint8Array {
 async function readAssetBytes(mod: number): Promise<Uint8Array> {
   const asset = Asset.fromModule(mod);
   await asset.downloadAsync();
-  if (!asset.localUri) throw new Error('asset has no local uri after download');
-  const b64 = await FileSystem.readAsStringAsync(asset.localUri, {
+  const uri = asset.localUri ?? asset.uri;
+  if (!uri) throw new Error('asset has no uri after download');
+
+  // On web an asset is a URL, not a file, and there is no file system to read
+  // it through. Fetching it is also the faster path there - no base64 round
+  // trip - so it is not merely a fallback.
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    if (!res.ok) throw new Error(`could not fetch ${uri}: ${res.status}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  const b64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
   return base64ToBytes(b64);
