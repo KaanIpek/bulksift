@@ -1,0 +1,154 @@
+// Prove the C++ core agrees with the TypeScript, frame by frame.
+//
+// A native rewrite of a hot loop is only worth having if it can be shown to
+// produce the same answer. "Shown" here is every grid cell and every component
+// boundary point over 100 real frames, compared exactly - not a spot check and
+// not a tolerance. The same discipline is already what keeps the Python index
+// builder and the TypeScript searcher honest with each other.
+//
+//   parity <scan_frames.bin> <scan_meta width> <height> <count> <stages.bin>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <chrono>
+#include <fstream>
+#include <vector>
+
+#include "bulksift_detect.h"
+
+static std::vector<uint8_t> readFile(const char* path) {
+  std::ifstream f(path, std::ios::binary | std::ios::ate);
+  if (!f) { std::printf("cannot open %s\n", path); std::exit(1); }
+  const std::streamsize n = f.tellg();
+  f.seekg(0);
+  std::vector<uint8_t> buf(static_cast<size_t>(n));
+  f.read(reinterpret_cast<char*>(buf.data()), n);
+  return buf;
+}
+
+struct Reader {
+  const uint8_t* p;
+  const uint8_t* end;
+  uint32_t u32() {
+    uint32_t v;
+    std::memcpy(&v, p, 4);
+    p += 4;
+    return v;
+  }
+  int32_t i32() {
+    int32_t v;
+    std::memcpy(&v, p, 4);
+    p += 4;
+    return v;
+  }
+};
+
+int main(int argc, char** argv) {
+  if (argc < 6) {
+    std::printf("usage: parity <frames.bin> <w> <h> <count> <stages.bin>\n");
+    return 2;
+  }
+  const std::vector<uint8_t> frames = readFile(argv[1]);
+  const int W = std::atoi(argv[2]);
+  const int H = std::atoi(argv[3]);
+  const int COUNT = std::atoi(argv[4]);
+  const std::vector<uint8_t> dump = readFile(argv[5]);
+
+  Reader r{dump.data(), dump.data() + dump.size()};
+  if (std::memcmp(r.p, "BSST", 4) != 0) { std::printf("bad dump magic\n"); return 1; }
+  r.p += 4;
+  const uint32_t dumpCount = r.u32();
+  if (static_cast<int>(dumpCount) != COUNT) {
+    std::printf("dump has %u frames, expected %d\n", dumpCount, COUNT);
+    return 1;
+  }
+
+  bulksift::PixelLayout layout;
+  layout.width = W;
+  layout.height = H;
+  layout.bytesPerPixel = 4;
+  layout.bytesPerRow = W * 4;
+  layout.rOff = 0; layout.gOff = 1; layout.bOff = 2;
+
+  const size_t frameBytes = static_cast<size_t>(W) * H * 4;
+  int gridMismatch = 0, compCountMismatch = 0, pointMismatch = 0, sizeMismatch = 0;
+  double worstGray = 0;
+  double gridMs = 0, compMs = 0;
+
+  for (int i = 0; i < COUNT; i++) {
+    const uint8_t* src = frames.data() + static_cast<size_t>(i) * frameBytes;
+
+    auto t0 = std::chrono::high_resolution_clock::now();
+    const bulksift::WorkGrid grid = bulksift::buildWorkGrid(src, frameBytes, layout, 320, 2);
+    auto t1 = std::chrono::high_resolution_clock::now();
+
+    const uint32_t gw = r.u32(), gh = r.u32(), gscale = r.u32();
+    if (static_cast<uint32_t>(grid.w) != gw || static_cast<uint32_t>(grid.h) != gh ||
+        static_cast<uint32_t>(grid.scale) != gscale) {
+      std::printf("frame %d: grid is %dx%d@%d, TS says %ux%u@%u\n",
+                  i, grid.w, grid.h, grid.scale, gw, gh, gscale);
+      return 1;
+    }
+    const float* tsGray = reinterpret_cast<const float*>(r.p);
+    r.p += static_cast<size_t>(gw) * gh * sizeof(float);
+    for (size_t k = 0; k < static_cast<size_t>(gw) * gh; k++) {
+      // Exact: both sides stored a float32 from the same double computation.
+      if (grid.gray[k] != tsGray[k]) {
+        gridMismatch++;
+        const double d = std::fabs(static_cast<double>(grid.gray[k]) - tsGray[k]);
+        if (d > worstGray) worstGray = d;
+      }
+    }
+
+    auto t2 = std::chrono::high_resolution_clock::now();
+    const std::vector<bulksift::Component> comps = bulksift::findComponents(
+        grid.gray.data(), grid.w, grid.h,
+        static_cast<int>(std::floor(grid.w * grid.h * 0.004)), 1.1);
+    auto t3 = std::chrono::high_resolution_clock::now();
+
+    gridMs += std::chrono::duration<double, std::milli>(t1 - t0).count();
+    compMs += std::chrono::duration<double, std::milli>(t3 - t2).count();
+
+    const uint32_t nComp = r.u32();
+    if (nComp != comps.size()) {
+      if (compCountMismatch < 3) {
+        std::printf("frame %d: %zu components, TS says %u\n", i, comps.size(), nComp);
+      }
+      compCountMismatch++;
+      // Still have to consume the rest of this frame's record.
+      for (uint32_t c = 0; c < nComp; c++) {
+        r.u32();
+        const uint32_t np = r.u32();
+        r.p += static_cast<size_t>(np) * 8;
+      }
+      continue;
+    }
+    for (uint32_t c = 0; c < nComp; c++) {
+      const uint32_t size = r.u32();
+      const uint32_t np = r.u32();
+      if (static_cast<int>(size) != comps[c].size) sizeMismatch++;
+      if (np != comps[c].xs.size()) {
+        pointMismatch++;
+        r.p += static_cast<size_t>(np) * 8;
+        continue;
+      }
+      for (uint32_t k = 0; k < np; k++) {
+        const int32_t x = r.i32(), y = r.i32();
+        if (x != comps[c].xs[k] || y != comps[c].ys[k]) pointMismatch++;
+      }
+    }
+  }
+
+  std::printf("%d frames\n\n", COUNT);
+  std::printf("grid cells differing        : %d (worst %.9f)\n", gridMismatch, worstGray);
+  std::printf("frames with a different count: %d\n", compCountMismatch);
+  std::printf("components of a wrong size  : %d\n", sizeMismatch);
+  std::printf("boundary points differing   : %d\n\n", pointMismatch);
+  std::printf("C++ grid   %.3f ms/frame\n", gridMs / COUNT);
+  std::printf("C++ detect %.3f ms/frame  (sobel + threshold + components)\n", compMs / COUNT);
+  std::printf("C++ total  %.3f ms/frame\n", (gridMs + compMs) / COUNT);
+
+  const bool ok = !gridMismatch && !compCountMismatch && !sizeMismatch && !pointMismatch;
+  std::printf("\n%s\n", ok ? "identical to the TypeScript" : "MISMATCH");
+  return ok ? 0 : 1;
+}

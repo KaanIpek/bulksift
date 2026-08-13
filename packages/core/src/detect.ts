@@ -998,3 +998,51 @@ export function rotate180(buf: Uint8ClampedArray, w: number, h: number): Uint8Cl
   }
   return out;
 }
+
+/**
+ * The per-pixel stages, exposed so the C++ port can be compared against them.
+ *
+ * Not part of the app's path. It exists because a native rewrite of a hot loop
+ * is only safe if it can be shown to produce the same answer, and "shown" here
+ * means every grid cell and every component boundary point, on real frames -
+ * not a spot check. See `packages/core/native/`.
+ */
+export function __stagesForParity(
+  rgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+  channels: 3 | 4,
+  workWidth: number,
+  sampleStep: number,
+) {
+  const bpp = channels;
+  const stride = width * bpp;
+  const cell = Math.max(sampleStep, Math.round(width / workWidth / sampleStep) * sampleStep);
+  const gW = Math.floor(width / cell);
+  const gH = Math.floor(height / cell);
+  const taps = Math.max(1, Math.floor(cell / sampleStep));
+  const inv = 1 / (taps * taps);
+  const gray = new Float32Array(gW * gH);
+  const rowStep = stride * sampleStep;
+  const colStep = bpp * sampleStep;
+  for (let cy = 0; cy < gH; cy++) {
+    const topRow = cy * cell * stride;
+    for (let cx = 0; cx < gW; cx++) {
+      let sum = 0;
+      let rowBase = topRow;
+      const left = cx * cell * bpp;
+      for (let ty = 0; ty < taps; ty++, rowBase += rowStep) {
+        let p = rowBase + left;
+        for (let tx = 0; tx < taps; tx++, p += colStep) {
+          sum += (77 * rgba[p] + 150 * rgba[p + 1] + 29 * rgba[p + 2]) >> 8;
+        }
+      }
+      gray[cy * gW + cx] = sum * inv;
+    }
+  }
+
+  const mag = sobelMagnitude(gray, gW, gH);
+  const bin = binarize(mag, gW, gH);
+  const comps = components(bin, gW, gH, Math.floor(gW * gH * 0.004));
+  return { grid: { gray, w: gW, h: gH, scale: cell }, components: comps };
+}

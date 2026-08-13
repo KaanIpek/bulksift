@@ -104,7 +104,21 @@ for (const t of SUITE) {
   if (res.status !== 0) failed++;
 }
 
+// The C++ core, compared against the TypeScript it was ported from. It skips
+// itself when there is no compiler, so this stays runnable anywhere.
+console.log('');
+console.log('=== native parity ===');
+{
+  const res = spawnSync(
+    process.execPath,
+    [join(root, 'packages', 'core', 'native', 'check-parity.mjs')],
+    { stdio: 'inherit', cwd: root },
+  );
+  if (res.status !== 0) failed++;
+}
+
 console.log(
-  `\n${SUITE.length - failed - skipped} passed, ${failed} failed, ${skipped} skipped`,
+  `
+${SUITE.length + 1 - failed - skipped} passed, ${failed} failed, ${skipped} skipped`,
 );
 process.exit(failed ? 1 : 0);
