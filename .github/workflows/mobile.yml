@@ -114,6 +114,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The runner boots with an older Xcode selected than it has installed,
+      # and one of Nitro's Swift package dependencies declares tools version
+      # 6.2. Without this the archive dies at dependency resolution with
+      # "package 'apple' is using Swift tools version 6.2.0 but the installed
+      # version is 6.1.0", which names neither the package nor the fix.
+      - name: Select the newest Xcode the runner has
+        run: |
+          ls -d /Applications/Xcode*.app
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "selecting $latest"
+          sudo xcode-select -s "$latest/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
