@@ -82,6 +82,7 @@ const SUITE = [
   { name: 'history', dir: mobileTestDir, needs: [] },
   { name: 'workimage', dir: mobileTestDir, needs: [] },
   { name: 'worklet-payload', dir: mobileTestDir, needs: [] },
+  { name: 'arturl', dir: mobileTestDir, needs: [] },
 ];
 
 let failed = 0;

@@ -160,28 +160,6 @@ export const plural = (n: number, one: string, many = `${one}s`) =>
   `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 
 /**
- * Where a card's picture lives.
- *
- * The catalogue's own image URL is `{setId}/{number}.png` on the same host for
- * every one of the 20,444 cards, so it is derived rather than stored - 20k URLs
- * would be half a megabyte of duplicated string in a file the app parses at
- * launch. Recognition never touches these: they are decoration, and everything
- * that reads a card still works with the network off.
- */
-export function artUrl(setId: string, number: string, hires = false): string {
-  const n = encodeURIComponent(number);
-  return `https://images.pokemontcg.io/${setId}/${n}${hires ? '_hires' : ''}.png`;
-}
-
-/** A set's symbol - the little glyph printed next to a card's number. */
-export const symbolUrl = (setId: string) =>
-  `https://images.pokemontcg.io/${setId}/symbol.png`;
-
-/** A set's logo, wide and transparent. */
-export const logoUrl = (setId: string) =>
-  `https://images.pokemontcg.io/${setId}/logo.png`;
-
-/**
  * Kill the focus ring a browser draws on a text field.
  *
  * `outlineStyle` is a react-native-web property that native React Native does

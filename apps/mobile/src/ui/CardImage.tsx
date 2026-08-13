@@ -24,7 +24,8 @@
 import { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { artUrl, c, rarityTone, t } from './theme';
+import { artUrl, logoUrl, symbolUrl } from './art';
+import { c, rarityTone, t } from './theme';
 
 /** Height for a given width, at the real card ratio. */
 export const CARD_RATIO = 342 / 245;
@@ -106,7 +107,7 @@ export function SetSymbol({ setId, size = 18 }: { setId: string; size?: number }
   if (failed) return <View style={{ width: size, height: size }} />;
   return (
     <Image
-      source={{ uri: `https://images.pokemontcg.io/${setId}/symbol.png` }}
+      source={{ uri: symbolUrl(setId) }}
       style={{ width: size, height: size }}
       resizeMode="contain"
       onError={() => setFailed(true)}
@@ -131,7 +132,7 @@ export function SetLogo({
   }
   return (
     <Image
-      source={{ uri: `https://images.pokemontcg.io/${setId}/logo.png` }}
+      source={{ uri: logoUrl(setId) }}
       style={{ width, height }}
       resizeMode="contain"
       onError={() => setFailed(true)}
