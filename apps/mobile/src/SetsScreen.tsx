@@ -119,6 +119,10 @@ export default function SetsScreen({
         keyExtractor={(x) => x.id}
         contentContainerStyle={rows.length ? styles.list : { flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
+        // Two remote images per row - the wordmark and the symbol.
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        windowSize={9}
         renderItem={({ item }) => {
           const pct = item.total ? item.have / item.total : 0;
           const done = item.have >= item.total && item.total > 0;

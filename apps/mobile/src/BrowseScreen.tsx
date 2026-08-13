@@ -156,6 +156,18 @@ export default function BrowseScreen({
         keyboardShouldPersistTaps="handled"
         columnWrapperStyle={results.length ? styles.column : undefined}
         contentContainerStyle={results.length ? styles.grid : { flexGrow: 1 }}
+        /*
+         * Bound how many card pictures are alive at once.
+         *
+         * Every tile holds a remote image, and FlatList's default windowSize of
+         * 21 keeps ten screens of content mounted in each direction - which for
+         * a full result set is all 120 of them, decoded and resident. Three
+         * screens either way is still far more than can be flicked past before
+         * the next batch renders, and it caps the memory a search can cost.
+         */
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={7}
         renderItem={({ item }) => {
           const variants = variantsFor(item.i);
           const best = variants.find((v) => v.market != null);

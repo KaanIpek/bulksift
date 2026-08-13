@@ -361,6 +361,11 @@ export default function CollectionScreen({
           keyExtractor={(e) => e.key}
           contentContainerStyle={shown.length ? styles.list : styles.listEmpty}
           keyboardShouldPersistTaps="handled"
+          // Each row holds a card picture, so the mounted window is bounded
+          // for the same reason as the Browse grid.
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={9}
           ListHeaderComponent={header}
           renderItem={({ item }) => <Row entry={item} onPress={() => onOpen(item)} />}
           ListEmptyComponent={
