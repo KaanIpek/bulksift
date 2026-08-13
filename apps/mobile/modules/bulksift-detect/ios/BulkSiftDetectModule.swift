@@ -38,5 +38,47 @@ public class BulkSiftDetectModule: Module {
       )
       return Int(code)
     }
+
+    /*
+     The index lives in native memory for the life of the process.
+
+     Two megabytes held once beats handing 20,444 rows across the bridge on
+     every query, and searching it is the stage an interpreter is worst at:
+     pure integer XOR and population count, with nothing to inline away.
+     */
+    Function("loadIndex") { (data: Uint8Array) -> Int in
+      Int(bulksift_index_load(
+        data.rawPointer.assumingMemoryBound(to: UInt8.self),
+        Int32(data.length)
+      ))
+    }
+
+    Function("search") { (query: Uint8Array, out4: Int32Array) -> Bool in
+      guard out4.length >= 4 else { return false }
+      bulksift_index_search(
+        query.rawPointer.assumingMemoryBound(to: UInt8.self),
+        Int32(query.length),
+        out4.rawPointer.assumingMemoryBound(to: Int32.self)
+      )
+      return true
+    }
+
+    Function("stripDistance") { (row: Int, strip: Uint8Array) -> Int in
+      Int(bulksift_index_strip_distance(
+        Int32(row),
+        strip.rawPointer.assumingMemoryBound(to: UInt8.self),
+        Int32(strip.length)
+      ))
+    }
+
+    Function("topK") { (query: Uint8Array, k: Int, outPairs: Int32Array) -> Int in
+      Int(bulksift_index_topk(
+        query.rawPointer.assumingMemoryBound(to: UInt8.self),
+        Int32(query.length),
+        Int32(k),
+        outPairs.rawPointer.assumingMemoryBound(to: Int32.self),
+        Int32(outPairs.length)
+      ))
+    }
   }
 }

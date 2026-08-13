@@ -47,7 +47,8 @@ console.log(hasClang ? 'building with clang++' : 'building with MSVC');
 if (hasClang) {
   execFileSync('clang++', [
     '-std=c++17', '-O2', '-o', exe,
-    join(here, 'bulksift_detect.cpp'), join(here, 'parity_main.cpp'),
+    join(here, 'bulksift_detect.cpp'), join(here, 'bulksift_match.cpp'),
+    join(here, 'parity_main.cpp'),
   ], { stdio: 'inherit' });
 } else {
   /*
@@ -63,7 +64,7 @@ if (hasClang) {
     '@echo off',
     'call "' + VCVARS + '" >nul',
     'cd /d "' + dir + '" || exit /b 1',
-    'cl /nologo /std:c++17 /O2 /EHsc /Fe:parity.exe bulksift_detect.cpp parity_main.cpp',
+    'cl /nologo /std:c++17 /O2 /EHsc /Fe:parity.exe bulksift_detect.cpp bulksift_match.cpp parity_main.cpp',
     '',
   ].join('\r\n'));
   execFileSync('cmd', ['/c', bat], { stdio: 'inherit' });
@@ -82,5 +83,6 @@ execFileSync(process.execPath, [
 
 const res = spawnSync(exe, [
   frames, String(meta.width), String(meta.height), String(meta.count), dump,
+  join(root, 'data', 'index.bin'),
 ], { stdio: 'inherit' });
 process.exit(res.status === null ? 1 : res.status);

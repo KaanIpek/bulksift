@@ -34,6 +34,22 @@ int bulksift_detect_run(const uint8_t* src, int32_t srcLen,
                         int32_t* outMeta, int32_t outMetaLen,
                         int32_t* outComps, int32_t outCompsLen);
 
+/**
+ * Parse and keep an index.bin. Returns the row count, or a negative code.
+ * The bytes are copied, so the caller may release its buffer afterwards.
+ */
+int32_t bulksift_index_load(const uint8_t* data, int32_t len);
+
+/** Best and runner-up for one descriptor, as (index, distance) x2 in `out4`. */
+void bulksift_index_search(const uint8_t* query, int32_t queryLen, int32_t* out4);
+
+/** Hamming distance between a row's footer and a query footer, or -1. */
+int32_t bulksift_index_strip_distance(int32_t row, const uint8_t* strip, int32_t stripLen);
+
+/** The k nearest rows as (index, distance) pairs. Returns how many were written. */
+int32_t bulksift_index_topk(const uint8_t* query, int32_t queryLen, int32_t k,
+                            int32_t* outPairs, int32_t outLen);
+
 #ifdef __cplusplus
 }
 #endif

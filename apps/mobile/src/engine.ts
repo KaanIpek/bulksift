@@ -11,6 +11,7 @@ import { Platform } from 'react-native';
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { nativeIndex } from '../modules/bulksift-detect';
 import {
   CardIndex,
   Scanner,
@@ -92,6 +93,8 @@ export interface SetInfo {
 }
 
 export interface LoadedEngine {
+  /** Whether the index searches are going through the C++ matcher. */
+  nativeIndex: boolean;
   scanner: Scanner;
   /** Every card, for browsing and for resolving a collection entry by id. */
   cards: CardRecord[];
@@ -130,6 +133,15 @@ export async function loadEngine(): Promise<LoadedEngine> {
     indexBytes.byteOffset + indexBytes.byteLength,
   ) as ArrayBuffer;
   const index = CardIndex.parse(buf);
+  /*
+   * Hand the index to the C++ matcher if there is one.
+   *
+   * The TypeScript scan stays in place and is what runs on the web, in the
+   * tests, and on any build where the module did not link. Both are compared
+   * on the queries the app actually produces - see check-parity.mjs.
+   */
+  const accel = nativeIndex(indexBytes);
+  if (accel) index.useAccelerator(accel);
   const cards: CardRecord[] = loadCards(compactCards);
   const scanner = new Scanner(index, cards, priceBook);
 
@@ -148,6 +160,7 @@ export async function loadEngine(): Promise<LoadedEngine> {
   );
 
   return {
+    nativeIndex: accel != null,
     scanner,
     cards,
     byId,

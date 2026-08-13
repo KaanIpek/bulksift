@@ -1,4 +1,4 @@
-// Prove the C++ core agrees with the TypeScript, frame by frame.
+﻿// Prove the C++ core agrees with the TypeScript, frame by frame.
 //
 // A native rewrite of a hot loop is only worth having if it can be shown to
 // produce the same answer. "Shown" here is every grid cell and every component
@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "bulksift_detect.h"
+#include "bulksift_match.h"
 
 static std::vector<uint8_t> readFile(const char* path) {
   std::ifstream f(path, std::ios::binary | std::ios::ate);
@@ -148,7 +149,71 @@ int main(int argc, char** argv) {
   std::printf("C++ detect %.3f ms/frame  (sobel + threshold + components)\n", compMs / COUNT);
   std::printf("C++ total  %.3f ms/frame\n", (gridMs + compMs) / COUNT);
 
-  const bool ok = !gridMismatch && !compCountMismatch && !sizeMismatch && !pointMismatch;
+  // ---- the index, on the queries the app actually produces ----------------
+  const std::vector<uint8_t> idx = readFile(argv[6]);
+  const int32_t rows = bulksift::indexLoad(idx.data(), static_cast<int32_t>(idx.size()));
+  if (rows <= 0) { std::printf("\nindexLoad failed: %d\n", rows); return 1; }
+
+  if (std::memcmp(r.p, "BSSQ", 4) != 0) { std::printf("\nbad query-section magic\n"); return 1; }
+  r.p += 4;
+  const uint32_t queryCount = r.u32();
+
+  int searchMismatch = 0, stripMismatch = 0, topkMismatch = 0;
+  double searchMs = 0;
+  std::vector<int32_t> topBuf(64);
+
+  for (uint32_t i = 0; i < queryCount; i++) {
+    const uint32_t qLen = r.u32();
+    const uint8_t* q = r.p;
+    r.p += qLen;
+    const uint32_t sLen = r.u32();
+    const uint8_t* strip = r.p;
+    r.p += sLen;
+    const int32_t wantBestI = r.i32(), wantBestD = r.i32();
+    const int32_t wantSecI = r.i32(), wantSecD = r.i32();
+    const uint32_t topN = r.u32();
+
+    auto s0 = std::chrono::high_resolution_clock::now();
+    const bulksift::SearchResult got = bulksift::indexSearch(q, static_cast<int32_t>(qLen));
+    auto s1 = std::chrono::high_resolution_clock::now();
+    searchMs += std::chrono::duration<double, std::milli>(s1 - s0).count();
+
+    if (got.bestIndex != wantBestI || got.bestDistance != wantBestD ||
+        got.runnerUpIndex != wantSecI || got.runnerUpDistance != wantSecD) {
+      if (searchMismatch < 3) {
+        std::printf("query %u: got (%d,%d)(%d,%d), TS says (%d,%d)(%d,%d)\n", i,
+                    got.bestIndex, got.bestDistance, got.runnerUpIndex, got.runnerUpDistance,
+                    wantBestI, wantBestD, wantSecI, wantSecD);
+      }
+      searchMismatch++;
+    }
+
+    const int32_t nGot = bulksift::indexTopK(q, static_cast<int32_t>(qLen),
+                                             static_cast<int32_t>(topN),
+                                             topBuf.data(), static_cast<int32_t>(topBuf.size()));
+    for (uint32_t k = 0; k < topN; k++) {
+      const int32_t wi = r.i32(), wd = r.i32();
+      if (static_cast<int32_t>(k) >= nGot || topBuf[k * 2] != wi || topBuf[k * 2 + 1] != wd) {
+        topkMismatch++;
+      }
+    }
+
+    const int32_t wantStrip = r.i32();
+    if (wantBestI >= 0) {
+      const int32_t gotStrip =
+          bulksift::indexStripDistance(wantBestI, strip, static_cast<int32_t>(sLen));
+      if (gotStrip != wantStrip) stripMismatch++;
+    }
+  }
+
+  std::printf("\n%u searches over %d rows\n", queryCount, rows);
+  std::printf("best/runner-up differing    : %d\n", searchMismatch);
+  std::printf("top-4 entries differing     : %d\n", topkMismatch);
+  std::printf("footer distances differing  : %d\n", stripMismatch);
+  std::printf("C++ search %.3f ms/query\n", searchMs / queryCount);
+
+  const bool ok = !gridMismatch && !compCountMismatch && !sizeMismatch && !pointMismatch &&
+                  !searchMismatch && !topkMismatch && !stripMismatch;
   std::printf("\n%s\n", ok ? "identical to the TypeScript" : "MISMATCH");
   return ok ? 0 : 1;
 }

@@ -284,7 +284,8 @@ export default function ScannerScreen({
         st.shownAt = now;
         setFps(fpsRef.current);
         setDiag(
-          `${isNativeAvailable ? 'native' : 'js'} ${width}x${height} · ` +
+          `${isNativeAvailable ? 'native' : 'js'}` +
+          `${engine.nativeIndex ? '+idx' : ''} ${width}x${height} · ` +
           `frames ${st.frames} · found ${st.detected} · ` +
           `matched ${st.matched}` +
           (st.bestDistance >= 0 ? ` · d=${st.bestDistance}` : '') +

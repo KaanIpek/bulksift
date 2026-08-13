@@ -57,6 +57,22 @@ export interface MatchResult {
   margin: number;
 }
 
+/**
+ * A native implementation of the three index lookups.
+ *
+ * Optional and interchangeable: when one is attached the searches go to it,
+ * and when none is the TypeScript below runs exactly as it always has. The
+ * TypeScript is the reference the C++ is checked against - see
+ * packages/core/native/check-parity.mjs, which compares both on the queries
+ * the app actually produces - so it stays alive rather than becoming dead code
+ * behind a flag.
+ */
+export interface IndexAccelerator {
+  search(query: Uint8Array): { best: Candidate; runnerUp: Candidate | null } | null;
+  topK(query: Uint8Array, k: number): Candidate[] | null;
+  stripDistance(row: number, strip: Uint8Array): number;
+}
+
 export class CardIndex {
   readonly rows: number;
   readonly bytesPerRow: number;
@@ -82,6 +98,12 @@ export class CardIndex {
   private stripBytes = 0;
   /** Width of the footer descriptor in bits, for normalising a distance. */
   stripBits = 0;
+  private accel: IndexAccelerator | null = null;
+
+  /** Route lookups through a native implementation. Pass null to go back. */
+  useAccelerator(accel: IndexAccelerator | null): void {
+    this.accel = accel;
+  }
 
   private constructor(data: Uint8Array, rows: number, bytesPerRow: number, bits: number) {
     this.rows = rows;
@@ -192,6 +214,10 @@ export class CardIndex {
    * Returns -1 when the index carries no footers (a v1 index).
    */
   stripDistance(row: number, query: Uint8Array): number {
+    if (this.accel) {
+      const d = this.accel.stripDistance(row, query);
+      if (d >= 0) return d;
+    }
     if (!this.strips || row < 0 || row >= this.rows) return -1;
     let d = 0;
     const off = row * this.stripBytes;
@@ -230,6 +256,17 @@ export class CardIndex {
    * and the same four cards are missed as before.
    */
   search(query: Uint8Array): MatchResult {
+    if (this.accel) {
+      const r = this.accel.search(query);
+      if (r) {
+        return {
+          best: r.best,
+          runnerUp: r.runnerUp,
+          normalised: r.best.distance / this.bits,
+          margin: r.runnerUp ? r.runnerUp.distance - r.best.distance : this.bits,
+        };
+      }
+    }
     const { words, rows, wordsPerRow } = this;
     const q = this.queryWords(query);
     const probe = Math.min(PROBE_WORDS, wordsPerRow);
@@ -309,6 +346,10 @@ export class CardIndex {
 
   /** Top-k nearest rows, used to build a disambiguation shortlist. */
   topK(query: Uint8Array, k: number): Candidate[] {
+    if (this.accel) {
+      const r = this.accel.topK(query, k);
+      if (r) return r;
+    }
     const { words, rows, wordsPerRow } = this;
     const q = this.queryWords(query);
     const heap: Candidate[] = [];

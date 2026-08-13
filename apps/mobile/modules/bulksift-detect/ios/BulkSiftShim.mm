@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "bulksift_detect.h"
+#include "bulksift_match.h"
 
 int bulksift_detect_run(const uint8_t* src, int32_t srcLen,
                         const int32_t* params, int32_t paramCount,
@@ -60,4 +61,28 @@ int bulksift_detect_run(const uint8_t* src, int32_t srcLen,
   outMeta[3] = kept;
   outMeta[4] = written;
   return 0;
+}
+
+int32_t bulksift_index_load(const uint8_t* data, int32_t len) {
+  if (!data || len <= 0) return -1;
+  return bulksift::indexLoad(data, len);
+}
+
+void bulksift_index_search(const uint8_t* query, int32_t queryLen, int32_t* out4) {
+  if (!out4) return;
+  const bulksift::SearchResult r = bulksift::indexSearch(query, queryLen);
+  out4[0] = r.bestIndex;
+  out4[1] = r.bestDistance;
+  out4[2] = r.runnerUpIndex;
+  out4[3] = r.runnerUpDistance;
+}
+
+int32_t bulksift_index_strip_distance(int32_t row, const uint8_t* strip, int32_t stripLen) {
+  return bulksift::indexStripDistance(row, strip, stripLen);
+}
+
+int32_t bulksift_index_topk(const uint8_t* query, int32_t queryLen, int32_t k,
+                            int32_t* outPairs, int32_t outLen) {
+  if (!outPairs) return 0;
+  return bulksift::indexTopK(query, queryLen, k, outPairs, outLen);
 }

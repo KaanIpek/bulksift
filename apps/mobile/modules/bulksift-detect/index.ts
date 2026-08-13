@@ -11,6 +11,7 @@
 import { requireOptionalNativeModule } from 'expo-modules-core';
 
 import type { WorkImage } from '../../src/core/detect';
+import type { IndexAccelerator } from '../../src/core/matcher';
 
 interface NativeDetect {
   run(
@@ -20,6 +21,10 @@ interface NativeDetect {
     outMeta: Int32Array,
     outComps: Int32Array,
   ): number;
+  loadIndex(data: Uint8Array): number;
+  search(query: Uint8Array, out4: Int32Array): boolean;
+  stripDistance(row: number, strip: Uint8Array): number;
+  topK(query: Uint8Array, k: number, outPairs: Int32Array): number;
 }
 
 const native = requireOptionalNativeModule<NativeDetect>('BulkSiftDetect');
@@ -129,5 +134,47 @@ export function nativeStages(
     // frame overwrites it.
     grid: { gray: gray.subarray(0, outW * outH), w: outW, h: outH, scale },
     components,
+  };
+}
+
+/**
+ * The index lookups, native.
+ *
+ * Returns null when there is nothing to accelerate with, and the caller leaves
+ * `CardIndex` on its own TypeScript path. Scratch buffers are module-level and
+ * reused: a search runs several times a frame, and allocating on each would
+ * hand back in garbage collection what the C++ saves in arithmetic.
+ */
+const out4 = new Int32Array(4);
+const topPairs = new Int32Array(32);
+
+export function nativeIndex(indexBytes: Uint8Array): IndexAccelerator | null {
+  if (!native) return null;
+  const rows = native.loadIndex(indexBytes);
+  if (rows <= 0) {
+    console.log(`[BulkSift] native index refused the file (code ${rows})`);
+    return null;
+  }
+  return {
+    search(query) {
+      if (!native!.search(query, out4)) return null;
+      if (out4[0] < 0) return null;
+      return {
+        best: { index: out4[0], distance: out4[1] },
+        runnerUp: out4[2] >= 0 ? { index: out4[2], distance: out4[3] } : null,
+      };
+    },
+    topK(query, k) {
+      const n = native!.topK(query, Math.min(k, topPairs.length >> 1), topPairs);
+      if (n <= 0) return null;
+      const out = new Array<{ index: number; distance: number }>(n);
+      for (let i = 0; i < n; i++) {
+        out[i] = { index: topPairs[i * 2], distance: topPairs[i * 2 + 1] };
+      }
+      return out;
+    },
+    stripDistance(row, strip) {
+      return native!.stripDistance(row, strip);
+    },
   };
 }
