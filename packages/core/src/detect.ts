@@ -39,6 +39,17 @@ export interface DetectOptions {
   /** Skip the downscale and use this grid instead. */
   work?: WorkImage;
   /**
+   * Skip gradient, threshold and component labelling too, because a native
+   * core already did them.
+   *
+   * The TypeScript stays the reference implementation and still runs whenever
+   * this is absent - on the web, in the test suite, and on any build where the
+   * native module did not link. `packages/core/native/check-parity.mjs` is what
+   * makes trusting these safe: it compares both implementations over 100 real
+   * frames and demands every boundary point match.
+   */
+  blobs?: Component[];
+  /**
    * A sharper image to measure the card's edges against, and how much bigger
    * it is than the frame passed in. The app subsamples the camera's 1920x1080
    * to 960x540 for speed; pointing refinement back at the original costs
@@ -257,7 +268,7 @@ function binarize(mag: Float32Array, w: number, h: number, k = 1.1): Uint8Array 
   return out;
 }
 
-interface Component {
+export interface Component {
   size: number;
   /** Leftmost and rightmost pixel of each occupied row. */
   boundary: Point[];
@@ -753,10 +764,12 @@ export function detectCard(
   const { gray, w, h, scale } = opts.work
     ? { gray: opts.work.gray, w: opts.work.w, h: opts.work.h, scale: opts.work.scale }
     : downscale(rgba, width, height, workWidth, channels);
-  const mag = sobelMagnitude(gray, w, h);
-  const bin = binarize(mag, w, h);
   const frameArea = w * h;
-  const comps = components(bin, w, h, Math.floor(frameArea * 0.004));
+  const comps = opts.blobs ?? (() => {
+    const mag = sobelMagnitude(gray, w, h);
+    const bin = binarize(mag, w, h);
+    return components(bin, w, h, Math.floor(frameArea * 0.004));
+  })();
   if (!comps.length) return null;
 
   comps.sort((a, b) => b.size - a.size);

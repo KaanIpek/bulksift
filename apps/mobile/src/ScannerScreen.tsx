@@ -53,7 +53,8 @@ import { createSynchronizable, scheduleOnRN } from 'react-native-worklets';
 import type { CardRecord, ScanHit } from '@bulksift/core';
 import { type LoadedEngine } from './engine';
 import { c, money as fmtMoney, r as rd, s as sp, t as ty } from './ui/theme';
-import { lumaSource, toWorkGrid, type FrameInfo } from './frame';
+import { cameraPixels, lumaSource, toWorkGrid, type FrameInfo } from './frame';
+import { isNativeAvailable, nativeStages } from '../modules/bulksift-detect';
 import { runSelfTest } from './selfTest';
 
 /**
@@ -212,10 +213,30 @@ export default function ScannerScreen({
       // asking for less - so it is subsampled to the width everything was
       // measured at on the way through.
       const tPack = Date.now();
-      // One pass over the frame, building only the detector's grid. The card's
-      // own pixels are read straight from the camera buffer when a card is
-      // actually recognised - see toWorkGrid.
-      const { pixels, grid } = toWorkGrid(bytes, info, 320);
+      /*
+       * The per-pixel stages, natively when the module is there.
+       *
+       * It is an accelerator, not a requirement: if it is missing or declines
+       * the frame, the TypeScript path below runs exactly as it always has.
+       * Both are checked against each other on the desktop, frame by frame, by
+       * packages/core/native/check-parity.mjs.
+       */
+      const nat = nativeStages(bytes, {
+        width: info.width,
+        height: info.height,
+        bytesPerRow: info.bytesPerRow,
+        bytesPerPixel: Math.max(3, Math.round(info.bytesPerRow / info.width)),
+        rOff: info.pixelFormat === 'rgb-bgra-8-bit' ? 2 : 0,
+        gOff: 1,
+        bOff: info.pixelFormat === 'rgb-bgra-8-bit' ? 0 : 2,
+      }, 320, 2, 0.004, 1.1);
+
+      // If the native core answered, the camera buffer is described rather than
+      // copied; otherwise the TypeScript builds the grid as it always has.
+      const natPixels = nat ? cameraPixels(bytes, info) : null;
+      const { pixels, grid } = nat && natPixels
+        ? { pixels: natPixels, grid: nat.grid }
+        : toWorkGrid(bytes, info, 320);
       const packMs = Date.now() - tPack;
       const sharp = lumaSource(bytes, info);
       const result = e.scanner.processFrame(
@@ -223,6 +244,7 @@ export default function ScannerScreen({
         { gray: grid.gray, w: grid.w, h: grid.h, scale: grid.scale },
         sharp ? { ...sharp, scale: 1 } : undefined,
         pixels,
+        nat && natPixels ? nat.components : undefined,
       );
       const width = info.width;
       const height = info.height;
@@ -262,7 +284,8 @@ export default function ScannerScreen({
         st.shownAt = now;
         setFps(fpsRef.current);
         setDiag(
-          `${width}x${height} · frames ${st.frames} · found ${st.detected} · ` +
+          `${isNativeAvailable ? 'native' : 'js'} ${width}x${height} · ` +
+          `frames ${st.frames} · found ${st.detected} · ` +
           `matched ${st.matched}` +
           (st.bestDistance >= 0 ? ` · d=${st.bestDistance}` : '') +
           ` · pack ${ms(st.pack)} detect ${ms(st.detect)} desc ${ms(st.describe)} ` +

@@ -10,7 +10,7 @@
 import { CANON_H, CANON_W, describe, describeStrip } from './descriptor.ts';
 import {
   detectCard, rectifyFrom, rotate180, sameView, scaleQuad, sourceOf,
-  type Detection, type LumaSource, type PixelSource, type WorkImage,
+  type Component, type Detection, type LumaSource, type PixelSource, type WorkImage,
 } from './detect.ts';
 import { CardIndex, type Candidate, type MatchResult } from './matcher.ts';
 import {
@@ -200,6 +200,7 @@ export class Scanner {
     work?: WorkImage,
     refineSource?: LumaSource & { scale: number },
     pixels?: PixelSource,
+    blobs?: Component[],
   ): FrameResult {
     // Where the card's own pixels are read from. A caller that already has the
     // frame in some interleaved layout hands it over as-is; anything else is
@@ -214,6 +215,7 @@ export class Scanner {
       channels,
       work,
       refineSource,
+      blobs,
     });
     timings.detect = performance.now() - tDetect;
 

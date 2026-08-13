@@ -51,3 +51,26 @@ for (const f of readdirSync(coreSrc)) {
   files++;
 }
 console.log(`engine: ${files} files copied from packages/core/src`);
+
+/*
+ * Stage the C++ core into the native module.
+ *
+ * It lives in packages/core/native so the parity harness and the app share one
+ * copy - a second, drifting copy of the detector is exactly the failure this
+ * whole arrangement exists to prevent. CocoaPods only sees files inside the
+ * module directory, so they are copied in at build time, the same way the
+ * TypeScript core is.
+ */
+{
+  const from = join(root, 'packages', 'core', 'native');
+  const to = join(root, 'apps', 'mobile', 'modules', 'bulksift-detect', 'ios');
+  mkdirSync(to, { recursive: true });
+  let n = 0;
+  for (const f of readdirSync(from)) {
+    if (!/\.(h|cpp)$/.test(f)) continue;
+    if (f.startsWith('parity_')) continue; // desktop harness only
+    copyFileSync(join(from, f), join(to, f));
+    n++;
+  }
+  console.log(`native: ${n} C++ files copied into the iOS module`);
+}

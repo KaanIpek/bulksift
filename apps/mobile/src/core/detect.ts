@@ -39,6 +39,17 @@ export interface DetectOptions {
   /** Skip the downscale and use this grid instead. */
   work?: WorkImage;
   /**
+   * Skip gradient, threshold and component labelling too, because a native
+   * core already did them.
+   *
+   * The TypeScript stays the reference implementation and still runs whenever
+   * this is absent - on the web, in the test suite, and on any build where the
+   * native module did not link. `packages/core/native/check-parity.mjs` is what
+   * makes trusting these safe: it compares both implementations over 100 real
+   * frames and demands every boundary point match.
+   */
+  blobs?: Component[];
+  /**
    * A sharper image to measure the card's edges against, and how much bigger
    * it is than the frame passed in. The app subsamples the camera's 1920x1080
    * to 960x540 for speed; pointing refinement back at the original costs
@@ -257,7 +268,7 @@ function binarize(mag: Float32Array, w: number, h: number, k = 1.1): Uint8Array 
   return out;
 }
 
-interface Component {
+export interface Component {
   size: number;
   /** Leftmost and rightmost pixel of each occupied row. */
   boundary: Point[];
@@ -753,10 +764,12 @@ export function detectCard(
   const { gray, w, h, scale } = opts.work
     ? { gray: opts.work.gray, w: opts.work.w, h: opts.work.h, scale: opts.work.scale }
     : downscale(rgba, width, height, workWidth, channels);
-  const mag = sobelMagnitude(gray, w, h);
-  const bin = binarize(mag, w, h);
   const frameArea = w * h;
-  const comps = components(bin, w, h, Math.floor(frameArea * 0.004));
+  const comps = opts.blobs ?? (() => {
+    const mag = sobelMagnitude(gray, w, h);
+    const bin = binarize(mag, w, h);
+    return components(bin, w, h, Math.floor(frameArea * 0.004));
+  })();
   if (!comps.length) return null;
 
   comps.sort((a, b) => b.size - a.size);
@@ -997,4 +1010,52 @@ export function rotate180(buf: Uint8ClampedArray, w: number, h: number): Uint8Cl
     out[d + 3] = buf[s + 3];
   }
   return out;
+}
+
+/**
+ * The per-pixel stages, exposed so the C++ port can be compared against them.
+ *
+ * Not part of the app's path. It exists because a native rewrite of a hot loop
+ * is only safe if it can be shown to produce the same answer, and "shown" here
+ * means every grid cell and every component boundary point, on real frames -
+ * not a spot check. See `packages/core/native/`.
+ */
+export function __stagesForParity(
+  rgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+  channels: 3 | 4,
+  workWidth: number,
+  sampleStep: number,
+) {
+  const bpp = channels;
+  const stride = width * bpp;
+  const cell = Math.max(sampleStep, Math.round(width / workWidth / sampleStep) * sampleStep);
+  const gW = Math.floor(width / cell);
+  const gH = Math.floor(height / cell);
+  const taps = Math.max(1, Math.floor(cell / sampleStep));
+  const inv = 1 / (taps * taps);
+  const gray = new Float32Array(gW * gH);
+  const rowStep = stride * sampleStep;
+  const colStep = bpp * sampleStep;
+  for (let cy = 0; cy < gH; cy++) {
+    const topRow = cy * cell * stride;
+    for (let cx = 0; cx < gW; cx++) {
+      let sum = 0;
+      let rowBase = topRow;
+      const left = cx * cell * bpp;
+      for (let ty = 0; ty < taps; ty++, rowBase += rowStep) {
+        let p = rowBase + left;
+        for (let tx = 0; tx < taps; tx++, p += colStep) {
+          sum += (77 * rgba[p] + 150 * rgba[p + 1] + 29 * rgba[p + 2]) >> 8;
+        }
+      }
+      gray[cy * gW + cx] = sum * inv;
+    }
+  }
+
+  const mag = sobelMagnitude(gray, gW, gH);
+  const bin = binarize(mag, gW, gH);
+  const comps = components(bin, gW, gH, Math.floor(gW * gH * 0.004));
+  return { grid: { gray, w: gW, h: gH, scale: cell }, components: comps };
 }

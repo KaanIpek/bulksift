@@ -286,3 +286,28 @@ export function toWorkGrid(
     grid: { gray, w: gW, h: gH, scale: cell },
   };
 }
+
+/**
+ * Describe the camera buffer's layout, without touching a pixel.
+ *
+ * The native path builds the detector's grid itself, so all the TypeScript
+ * needs is a description of where the card's pixels live for rectification.
+ */
+export function cameraPixels(src: Uint8Array, info: FrameInfo): CameraPixels | null {
+  const layout = layoutFor(info.pixelFormat);
+  if (!layout) return null;
+  let bpp = layout.bytesPerPixel;
+  if (info.pixelFormat === 'rgb-rgb-8-bit' && info.bytesPerRow >= info.width * 4) bpp = 4;
+  const stride = info.bytesPerRow > 0 ? info.bytesPerRow : info.width * bpp;
+  if (src.length < stride * info.height) return null;
+  return {
+    data: src,
+    width: info.width,
+    height: info.height,
+    bytesPerRow: stride,
+    bytesPerPixel: bpp,
+    rOff: layout.r,
+    gOff: layout.g,
+    bOff: layout.b,
+  };
+}
