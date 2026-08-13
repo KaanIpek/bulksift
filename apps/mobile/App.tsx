@@ -43,6 +43,9 @@ import { loadEngine, type LoadedEngine } from './src/engine';
 import {
   CollectionIcon, ScanIcon, SearchIcon, SetsIcon, type IconProps,
 } from './src/ui/icons';
+import {
+  ScanFeed, ScanOverlay, ScanSummary, ScanViewport,
+} from './src/ui/ScanChrome';
 import { c, r, s, shadow, t } from './src/ui/theme';
 
 type Tab = 'scan' | 'collection' | 'sets' | 'browse';
@@ -219,11 +222,12 @@ export default function App() {
               onOpenCollection={() => setTab('collection')}
             />
           ) : (
-            <View style={styles.center}>
-              <Text style={styles.muted}>
-                Scanning needs a phone camera. Everything else works here.
-              </Text>
-            </View>
+            <ScanPreview
+              sessionCount={sessionEntries.reduce((n, e) => n + e.quantity, 0)}
+              sessionValue={sessionEntries.reduce((v, e) => v + entryValue(e), 0)}
+              recent={entries.slice(0, 4)}
+              onOpenCollection={() => setTab('collection')}
+            />
           )
         ) : null}
 
@@ -306,6 +310,64 @@ export default function App() {
   );
 }
 
+/**
+ * The scan screen without a camera, for working on it in a browser.
+ *
+ * The camera is a native module, so on the web the whole screen used to be one
+ * line of apologetic text - which meant the app's most-used screen was the only
+ * one whose layout could never be looked at without a ten-minute device build.
+ * This renders the real chrome around a placeholder, driven by whatever is in
+ * the collection, so the states that matter can be checked at phone size.
+ *
+ * It never ships: `ScannerScreen` is null only on web.
+ */
+function ScanPreview({
+  sessionCount, sessionValue, recent, onOpenCollection,
+}: {
+  sessionCount: number;
+  sessionValue: number;
+  recent: Entry[];
+  onOpenCollection: () => void;
+}) {
+  const [scanning, setScanning] = useState(true);
+  const rows = recent.map((e) => ({
+    key: e.key,
+    name: e.name,
+    set: e.setName,
+    setId: e.setId,
+    number: e.number,
+    rarity: e.rarity,
+    price: e.unitPrice,
+    unsure: !!e.needsPrinting,
+  }));
+  const live = recent[0]
+    ? {
+      name: recent[0].name,
+      set: recent[0].setName,
+      setId: recent[0].setId,
+      number: recent[0].number,
+    }
+    : null;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <ScanViewport>
+        <View style={styles.noCam}>
+          <Text style={styles.noCamText}>camera preview</Text>
+        </View>
+        <ScanOverlay aim={live ? 'good' : 'idle'} live={live} fps={31} />
+      </ScanViewport>
+      <ScanSummary
+        value={sessionValue}
+        count={sessionCount}
+        scanning={scanning}
+        onToggle={() => setScanning((v) => !v)}
+      />
+      <ScanFeed rows={rows} onOpenCollection={onOpenCollection} />
+    </View>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <SafeAreaProvider>
@@ -339,5 +401,10 @@ const styles = StyleSheet.create({
   },
   brand: { ...t.title, fontSize: 27, color: c.text, letterSpacing: -0.6 },
   brandDot: { color: c.accent },
+  noCam: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#0d1017',
+  },
+  noCamText: { ...t.tiny, color: c.faint, letterSpacing: 1.4 },
   loadHint: { ...t.tiny, color: c.faint, textAlign: 'center' },
 });

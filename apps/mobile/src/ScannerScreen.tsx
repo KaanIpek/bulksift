@@ -31,15 +31,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   Camera,
   useCameraDevice,
@@ -52,10 +44,12 @@ import { createSynchronizable, scheduleOnRN } from 'react-native-worklets';
 
 import type { CardRecord, ScanHit } from '@bulksift/core';
 import { type LoadedEngine } from './engine';
-import { c, money as fmtMoney, r as rd, s as sp, t as ty } from './ui/theme';
-import CardImage from './ui/CardImage';
+import { c, s as sp, t as ty } from './ui/theme';
 import { ScanIcon } from './ui/icons';
-import { Badge, Button } from './ui/parts';
+import { Button } from './ui/parts';
+import {
+  ScanFeed, ScanOverlay, ScanSummary, ScanViewport, type Aim,
+} from './ui/ScanChrome';
 import { cameraPixels, lumaSource, toWorkGrid, type FrameInfo } from './frame';
 import { isNativeAvailable, nativeDescriber, nativeStages } from '../modules/bulksift-detect';
 import { runSelfTest } from './selfTest';
@@ -471,13 +465,11 @@ export default function ScannerScreen({
     );
   }
 
-  const aim: 'idle' | 'near' | 'good' =
-    fill >= GOOD_FILL ? 'good' : fill > 0 ? 'near' : 'idle';
-  const bracket = aim === 'good' ? c.good : aim === 'near' ? c.warn : 'rgba(242,244,249,0.5)';
+  const aim: Aim = fill >= GOOD_FILL ? 'good' : fill > 0 ? 'near' : 'idle';
 
   return (
     <View style={styles.root}>
-      <View style={styles.cameraWrap}>
+      <ScanViewport>
         <Camera
           style={StyleSheet.absoluteFill}
           device={device}
@@ -485,132 +477,21 @@ export default function ScannerScreen({
           outputs={outputs}
           onError={(e) => setDiag(`camera error: ${e.message}`)}
         />
+        <ScanOverlay aim={aim} live={live} fps={fps} />
+      </ScanViewport>
 
-        {/*
-          Corner brackets rather than a full rectangle.
-          A closed outline invites you to line the card up with it; brackets
-          say "somewhere in here", which is what the detector actually wants -
-          it finds the quad itself, and the only thing that matters is that the
-          card is big enough in frame. The measurements are blunt about that:
-          a card at half the frame's width costs 256 bits of match quality,
-          more than blur, white balance and glare put together.
-        */}
-        <View pointerEvents="none" style={styles.guideWrap}>
-          <View style={styles.guide}>
-            {([
-              ['tl', { top: -2, left: -2 }],
-              ['tr', { top: -2, right: -2 }],
-              ['bl', { bottom: -2, left: -2 }],
-              ['br', { bottom: -2, right: -2 }],
-            ] as const).map(([id, pos]) => (
-              <View
-                key={id}
-                style={[
-                  styles.corner,
-                  pos,
-                  { borderColor: bracket },
-                  id[0] === 't' ? styles.cornerTop : styles.cornerBottom,
-                  id[1] === 'l' ? styles.cornerLeft : styles.cornerRight,
-                ]}
-              />
-            ))}
-          </View>
-        </View>
+      <ScanSummary
+        value={sessionValue}
+        count={sessionCount}
+        scanning={scanning}
+        onToggle={() => {
+          const next = !scanning;
+          setScanning(next);
+          setDiag(next ? 'scanning ON — point at a card' : 'scanning OFF — camera only');
+        }}
+      />
 
-        {/* What the engine is seeing right now, over the picture. */}
-        <View pointerEvents="none" style={styles.hud}>
-          {live ? (
-            <>
-              <CardImage
-                setId={live.setId} number={live.number} width={30} radius={3}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.hudText} numberOfLines={1}>{live.name}</Text>
-                <Text style={styles.hudSub} numberOfLines={1}>{live.set}</Text>
-              </View>
-            </>
-          ) : (
-            <Text style={styles.hudText} numberOfLines={1}>
-              {aim === 'near'
-                ? 'Move closer — fill the brackets'
-                : 'Pass a card through the frame'}
-            </Text>
-          )}
-          <View style={[styles.fps, aim === 'good' && { borderColor: c.good }]}>
-            <Text style={styles.fpsText}>{fps.toFixed(0)} fps</Text>
-          </View>
-        </View>
-      </View>
-
-      {/*
-        The session, not the collection. What matters mid-scan is whether the
-        last card landed and what the pile is worth so far; the collection tab
-        is where any of it gets examined.
-      */}
-      <View style={styles.summary}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.label}>THIS SESSION</Text>
-          <Text style={styles.total}>{fmtMoney(sessionValue)}</Text>
-        </View>
-        <View style={styles.countCol}>
-          <Text style={styles.label}>CARDS</Text>
-          <Text style={styles.count}>{sessionCount}</Text>
-        </View>
-        <Pressable
-          style={({ pressed }) => [
-            styles.pill, scanning ? styles.scanOn : styles.scanOff,
-            pressed && { opacity: 0.75 },
-          ]}
-          onPress={() => {
-            const next = !scanning;
-            setScanning(next);
-            setDiag(next ? 'scanning ON — point at a card' : 'scanning OFF — camera only');
-          }}
-        >
-          {scanning
-            ? <View style={styles.pauseGlyph}><View style={styles.pauseBar} /><View style={styles.pauseBar} /></View>
-            : <ScanIcon size={16} color={c.onAccent} strong />}
-          <Text style={[styles.pillText, !scanning && { color: c.onAccent }]}>
-            {scanning ? 'Pause' : 'Resume'}
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.feedWrap}>
-        {recent.length ? (
-          <>
-            <View style={styles.feedHeadRow}>
-              <Text style={styles.feedHead}>JUST SCANNED</Text>
-              <Pressable onPress={onOpenCollection} hitSlop={8}>
-                <Text style={styles.link}>Open collection</Text>
-              </Pressable>
-            </View>
-            {recent.map((x) => (
-              <View key={x.key} style={styles.feedRow}>
-                <CardImage
-                  setId={x.setId} number={x.number} rarity={x.rarity} width={32} radius={3}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.feedName} numberOfLines={1}>{x.name}</Text>
-                  <Text style={styles.feedMeta} numberOfLines={1}>
-                    {x.set} · #{x.number}
-                  </Text>
-                </View>
-                {x.unsure ? <Badge label="CHECK" tone="warn" /> : null}
-                <Text style={styles.feedPrice}>{fmtMoney(x.price)}</Text>
-              </View>
-            ))}
-          </>
-        ) : (
-          <View style={styles.idleWrap}>
-            <Text style={styles.idleTitle}>Prop the phone up and start passing</Text>
-            <Text style={styles.feedIdle}>
-              Each card lands in your collection with its price. It reads
-              continuously — there is no button to press per card.
-            </Text>
-          </View>
-        )}
-      </View>
+      <ScanFeed rows={recent} onOpenCollection={onOpenCollection} />
 
       {selfTest ? (
         <View style={styles.selfTest}>
@@ -633,77 +514,6 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center',
     padding: sp.xl, gap: sp.md,
   },
-
-  cameraWrap: { height: '44%', backgroundColor: '#05070c' },
-  guideWrap: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  guide: { height: '82%', aspectRatio: 2.5 / 3.5 },
-  corner: { position: 'absolute', width: 30, height: 30, borderWidth: 3 },
-  cornerTop: { borderBottomWidth: 0 },
-  cornerBottom: { borderTopWidth: 0 },
-  cornerLeft: { borderRightWidth: 0, borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
-  cornerRight: { borderLeftWidth: 0, borderTopRightRadius: 10, borderBottomRightRadius: 10 },
-
-  hud: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
-    paddingHorizontal: sp.md, paddingVertical: sp.sm,
-    flexDirection: 'row', alignItems: 'center', gap: sp.sm,
-    backgroundColor: 'rgba(5,7,12,0.72)',
-  },
-  hudText: { ...ty.body, color: c.text, flex: 1 },
-  hudSub: { ...ty.tiny, color: c.dim, marginTop: 1 },
-  fps: {
-    paddingHorizontal: 7, paddingVertical: 3, borderRadius: rd.sm,
-    borderWidth: 1, borderColor: c.line, backgroundColor: 'rgba(8,9,13,0.6)',
-  },
-  fpsText: { ...ty.tiny, color: c.dim, fontVariant: ['tabular-nums'] },
-
-  summary: {
-    flexDirection: 'row', alignItems: 'center', gap: sp.lg,
-    paddingHorizontal: sp.lg, paddingVertical: sp.md,
-    borderBottomWidth: 1, borderBottomColor: c.lineSoft,
-  },
-  label: { ...ty.section, color: c.faint },
-  total: {
-    fontSize: 26, fontWeight: '800', color: c.money, letterSpacing: -0.6,
-    fontVariant: ['tabular-nums'], marginTop: 2,
-  },
-  countCol: { alignItems: 'flex-end' },
-  count: {
-    fontSize: 22, fontWeight: '800', color: c.text, fontVariant: ['tabular-nums'],
-    marginTop: 2,
-  },
-  pill: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    paddingHorizontal: sp.lg, paddingVertical: 11,
-    borderRadius: rd.pill, borderWidth: 1,
-  },
-  scanOn: { backgroundColor: c.surfaceHi, borderColor: c.line },
-  scanOff: { backgroundColor: c.accent, borderColor: c.accent },
-  pillText: { ...ty.body, color: c.text, fontWeight: '800' },
-  pauseGlyph: { flexDirection: 'row', gap: 3 },
-  pauseBar: { width: 3.5, height: 13, borderRadius: 2, backgroundColor: c.text },
-
-  feedWrap: { flex: 1, paddingHorizontal: sp.lg, paddingTop: sp.md },
-  feedHeadRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: sp.sm,
-  },
-  feedHead: { ...ty.section, color: c.faint },
-  feedRow: {
-    flexDirection: 'row', alignItems: 'center', gap: sp.md, paddingVertical: 7,
-    borderBottomWidth: 1, borderBottomColor: c.lineSoft,
-  },
-  feedName: { ...ty.body, color: c.text },
-  feedMeta: { ...ty.meta, color: c.dim, marginTop: 1 },
-  feedPrice: { ...ty.money, color: c.money },
-  link: { ...ty.tiny, color: c.accent, fontWeight: '800' },
-  idleWrap: { paddingTop: sp.xl, paddingHorizontal: sp.md, gap: sp.sm },
-  idleTitle: { ...ty.subtitle, color: c.text, textAlign: 'center' },
-  feedIdle: { ...ty.meta, color: c.faint, textAlign: 'center', lineHeight: 19 },
-
   title: { ...ty.title, color: c.text },
   muted: { ...ty.meta, color: c.dim, textAlign: 'center', lineHeight: 19, maxWidth: 300 },
   diag: { ...ty.tiny, color: c.faint, paddingHorizontal: sp.md, paddingBottom: sp.sm },
