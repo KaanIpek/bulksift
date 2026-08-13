@@ -50,6 +50,24 @@ int32_t bulksift_index_strip_distance(int32_t row, const uint8_t* strip, int32_t
 int32_t bulksift_index_topk(const uint8_t* query, int32_t queryLen, int32_t k,
                             int32_t* outPairs, int32_t outLen);
 
+/**
+ * Rectify a quad out of the frame and describe it.
+ *
+ * `params` is the same eleven-entry layout as bulksift_detect_run, of which
+ * only the first seven (geometry and channel offsets) are read. `quad` is eight
+ * doubles: x0,y0 .. x3,y3 in source coordinates. `flipped` describes the card
+ * 180 degrees round, which avoids moving a 322 KB canonical image across the
+ * bridge merely to turn it over.
+ *
+ * Writes 96 descriptor bytes and 15 footer bytes. Returns 0 on success.
+ */
+int32_t bulksift_describe_quad(const uint8_t* src, int32_t srcLen,
+                               const int32_t* params, int32_t paramCount,
+                               const double* quad, int32_t quadCount,
+                               int32_t flipped,
+                               uint8_t* outDesc, int32_t outDescLen,
+                               uint8_t* outStrip, int32_t outStripLen);
+
 #ifdef __cplusplus
 }
 #endif

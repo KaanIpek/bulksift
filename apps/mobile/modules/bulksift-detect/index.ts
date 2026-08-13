@@ -21,6 +21,14 @@ interface NativeDetect {
     outMeta: Int32Array,
     outComps: Int32Array,
   ): number;
+  describe(
+    src: Uint8Array,
+    params: Int32Array,
+    quad: Float64Array,
+    flipped: boolean,
+    outDesc: Uint8Array,
+    outStrip: Uint8Array,
+  ): number;
   loadIndex(data: Uint8Array): number;
   search(query: Uint8Array, out4: Int32Array): boolean;
   stripDistance(row: number, strip: Uint8Array): number;
@@ -176,5 +184,44 @@ export function nativeIndex(indexBytes: Uint8Array): IndexAccelerator | null {
     stripDistance(row, strip) {
       return native!.stripDistance(row, strip);
     },
+  };
+}
+
+/*
+ * Rectify-and-describe, native.
+ *
+ * Buffers are module-level and reused. A card is described up to four times a
+ * frame - three crop calibrations and possibly a flip - so allocating per call
+ * would hand back in garbage collection what the C++ saves in arithmetic.
+ */
+const quadBuf = new Float64Array(8);
+const descBuf = new Uint8Array(96);
+const stripBuf = new Uint8Array(15);
+const descParams = new Int32Array(11);
+
+export function nativeDescriber(
+  src: Uint8Array,
+  layout: FrameLayout,
+): ((quad: Array<{ x: number; y: number }>, flipped: boolean) =>
+    { desc: Uint8Array; strip: Uint8Array } | null) | null {
+  if (!native) return null;
+  descParams[0] = layout.width;
+  descParams[1] = layout.height;
+  descParams[2] = layout.bytesPerRow;
+  descParams[3] = layout.bytesPerPixel;
+  descParams[4] = layout.rOff;
+  descParams[5] = layout.gOff;
+  descParams[6] = layout.bOff;
+
+  return (quad, flipped) => {
+    for (let i = 0; i < 4; i++) {
+      quadBuf[i * 2] = quad[i].x;
+      quadBuf[i * 2 + 1] = quad[i].y;
+    }
+    const code = native!.describe(src, descParams, quadBuf, flipped, descBuf, stripBuf);
+    if (code !== 0) return null;
+    // Copied, because the caller keeps the descriptor across frames - the
+    // sharpest read of a streak is held until the card is confirmed.
+    return { desc: descBuf.slice(), strip: stripBuf.slice() };
   };
 }

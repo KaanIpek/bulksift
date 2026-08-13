@@ -14,7 +14,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "icon": "./assets/icon.png",
-      "buildNumber": "19"
+      "buildNumber": "20"
     },
     "android": {
       "package": "com.rldgames.bulksift",

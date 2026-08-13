@@ -54,7 +54,7 @@ import type { CardRecord, ScanHit } from '@bulksift/core';
 import { type LoadedEngine } from './engine';
 import { c, money as fmtMoney, r as rd, s as sp, t as ty } from './ui/theme';
 import { cameraPixels, lumaSource, toWorkGrid, type FrameInfo } from './frame';
-import { isNativeAvailable, nativeStages } from '../modules/bulksift-detect';
+import { isNativeAvailable, nativeDescriber, nativeStages } from '../modules/bulksift-detect';
 import { runSelfTest } from './selfTest';
 
 /**
@@ -221,7 +221,7 @@ export default function ScannerScreen({
        * Both are checked against each other on the desktop, frame by frame, by
        * packages/core/native/check-parity.mjs.
        */
-      const nat = nativeStages(bytes, {
+      const frameLayout = {
         width: info.width,
         height: info.height,
         bytesPerRow: info.bytesPerRow,
@@ -229,7 +229,9 @@ export default function ScannerScreen({
         rOff: info.pixelFormat === 'rgb-bgra-8-bit' ? 2 : 0,
         gOff: 1,
         bOff: info.pixelFormat === 'rgb-bgra-8-bit' ? 0 : 2,
-      }, 320, 2, 0.004, 1.1);
+      };
+      const nat = nativeStages(bytes, frameLayout, 320, 2, 0.004, 1.1);
+      const describer = nativeDescriber(bytes, frameLayout) ?? undefined;
 
       // If the native core answered, the camera buffer is described rather than
       // copied; otherwise the TypeScript builds the grid as it always has.
@@ -245,6 +247,7 @@ export default function ScannerScreen({
         sharp ? { ...sharp, scale: 1 } : undefined,
         pixels,
         nat && natPixels ? nat.components : undefined,
+        describer,
       );
       const width = info.width;
       const height = info.height;

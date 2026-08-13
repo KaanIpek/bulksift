@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "bulksift_detect.h"
+#include "bulksift_describe.h"
 #include "bulksift_match.h"
 
 static std::vector<uint8_t> readFile(const char* path) {
@@ -159,10 +160,22 @@ int main(int argc, char** argv) {
   const uint32_t queryCount = r.u32();
 
   int searchMismatch = 0, stripMismatch = 0, topkMismatch = 0;
-  double searchMs = 0;
+  int descMismatch = 0, descStripMismatch = 0, descSkipped = 0;
+  double searchMs = 0, describeMs = 0;
   std::vector<int32_t> topBuf(64);
+  std::vector<uint8_t> gotDesc(bulksift::DESC_BYTES), gotStrip(bulksift::STRIP_BYTES);
 
   for (uint32_t i = 0; i < queryCount; i++) {
+    const uint32_t hasQuad = r.u32();
+    bulksift::QuadF quad{};
+    if (hasQuad) {
+      for (int j = 0; j < 8; j++) {
+        double v;
+        std::memcpy(&v, r.p, 8);
+        r.p += 8;
+        quad.p[j] = v;
+      }
+    }
     const uint32_t qLen = r.u32();
     const uint8_t* q = r.p;
     r.p += qLen;
@@ -198,6 +211,34 @@ int main(int argc, char** argv) {
       }
     }
 
+    // Rectify and describe the same quad from the same frame.
+    if (hasQuad) {
+      bulksift::PixelSourceC ps;
+      ps.data = frames.data() + static_cast<size_t>(i) * frameBytes;
+      ps.len = static_cast<int32_t>(frameBytes);
+      ps.width = W;
+      ps.height = H;
+      ps.bytesPerRow = W * 4;
+      ps.bytesPerPixel = 4;
+      ps.rOff = 0; ps.gOff = 1; ps.bOff = 2;
+
+      auto d0 = std::chrono::high_resolution_clock::now();
+      const int rc = bulksift::describeQuad(ps, quad, false,
+                                            gotDesc.data(), bulksift::DESC_BYTES,
+                                            gotStrip.data(), bulksift::STRIP_BYTES);
+      auto d1 = std::chrono::high_resolution_clock::now();
+      describeMs += std::chrono::duration<double, std::milli>(d1 - d0).count();
+
+      if (rc != 0) {
+        descSkipped++;
+      } else {
+        if (std::memcmp(gotDesc.data(), q, bulksift::DESC_BYTES) != 0) descMismatch++;
+        if (std::memcmp(gotStrip.data(), strip, bulksift::STRIP_BYTES) != 0) descStripMismatch++;
+      }
+    } else {
+      descSkipped++;
+    }
+
     const int32_t wantStrip = r.i32();
     if (wantBestI >= 0) {
       const int32_t gotStrip =
@@ -211,9 +252,15 @@ int main(int argc, char** argv) {
   std::printf("top-4 entries differing     : %d\n", topkMismatch);
   std::printf("footer distances differing  : %d\n", stripMismatch);
   std::printf("C++ search %.3f ms/query\n", searchMs / queryCount);
+  std::printf("\ndescriptors differing         : %d\n", descMismatch);
+  std::printf("footers differing             : %d\n", descStripMismatch);
+  std::printf("frames with no quad           : %d\n", descSkipped);
+  std::printf("C++ describe %.3f ms/card  (rectify + descriptor + footer)\n",
+              describeMs / (queryCount > 0 ? queryCount : 1));
 
   const bool ok = !gridMismatch && !compCountMismatch && !sizeMismatch && !pointMismatch &&
-                  !searchMismatch && !topkMismatch && !stripMismatch;
+                  !searchMismatch && !topkMismatch && !stripMismatch &&
+                  !descMismatch && !descStripMismatch;
   std::printf("\n%s\n", ok ? "identical to the TypeScript" : "MISMATCH");
   return ok ? 0 : 1;
 }

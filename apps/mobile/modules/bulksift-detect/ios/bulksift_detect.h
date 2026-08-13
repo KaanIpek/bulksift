@@ -31,6 +31,19 @@ struct PixelLayout {
   int bOff = 2;
 };
 
+/** An interleaved pixel buffer, however the camera arranged it. */
+struct PixelSourceC {
+  const uint8_t* data = nullptr;
+  int32_t len = 0;
+  int width = 0;
+  int height = 0;
+  int bytesPerRow = 0;
+  int bytesPerPixel = 4;
+  int rOff = 0;
+  int gOff = 1;
+  int bOff = 2;
+};
+
 struct WorkGrid {
   std::vector<float> gray;
   int w = 0;

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "bulksift_detect.h"
+#include "bulksift_describe.h"
 #include "bulksift_match.h"
 
 int bulksift_detect_run(const uint8_t* src, int32_t srcLen,
@@ -85,4 +86,31 @@ int32_t bulksift_index_topk(const uint8_t* query, int32_t queryLen, int32_t k,
                             int32_t* outPairs, int32_t outLen) {
   if (!outPairs) return 0;
   return bulksift::indexTopK(query, queryLen, k, outPairs, outLen);
+}
+
+int32_t bulksift_describe_quad(const uint8_t* src, int32_t srcLen,
+                               const int32_t* params, int32_t paramCount,
+                               const double* quad, int32_t quadCount,
+                               int32_t flipped,
+                               uint8_t* outDesc, int32_t outDescLen,
+                               uint8_t* outStrip, int32_t outStripLen) {
+  if (!src || !params || paramCount < 7 || !quad || quadCount < 8) return -1;
+
+  bulksift::PixelSourceC ps;
+  ps.data = src;
+  ps.len = srcLen;
+  ps.width = params[0];
+  ps.height = params[1];
+  ps.bytesPerRow = params[2];
+  ps.bytesPerPixel = params[3];
+  ps.rOff = params[4];
+  ps.gOff = params[5];
+  ps.bOff = params[6];
+  if (static_cast<int64_t>(ps.bytesPerRow) * ps.height > srcLen) return -2;
+
+  bulksift::QuadF q;
+  for (int i = 0; i < 8; i++) q.p[i] = quad[i];
+
+  return bulksift::describeQuad(ps, q, flipped != 0,
+                                outDesc, outDescLen, outStrip, outStripLen);
 }

@@ -63,6 +63,36 @@ public class BulkSiftDetectModule: Module {
       return true
     }
 
+    /*
+     Rectify and describe in one crossing.
+
+     The canonical card is 322 KB and exists only to be reduced to 96 bytes, so
+     it never leaves native memory. Turning it over for the flipped read happens
+     there too, for the same reason.
+     */
+    Function("describe") { (
+      src: Uint8Array,
+      params: Int32Array,
+      quad: Float64Array,
+      flipped: Bool,
+      outDesc: Uint8Array,
+      outStrip: Uint8Array
+    ) -> Int in
+      Int(bulksift_describe_quad(
+        src.rawPointer.assumingMemoryBound(to: UInt8.self),
+        Int32(src.length),
+        params.rawPointer.assumingMemoryBound(to: Int32.self),
+        Int32(params.length),
+        quad.rawPointer.assumingMemoryBound(to: Double.self),
+        Int32(quad.length),
+        flipped ? 1 : 0,
+        outDesc.rawPointer.assumingMemoryBound(to: UInt8.self),
+        Int32(outDesc.length),
+        outStrip.rawPointer.assumingMemoryBound(to: UInt8.self),
+        Int32(outStrip.length)
+      ))
+    }
+
     Function("stripDistance") { (row: Int, strip: Uint8Array) -> Int in
       Int(bulksift_index_strip_distance(
         Int32(row),

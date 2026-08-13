@@ -48,7 +48,7 @@ if (hasClang) {
   execFileSync('clang++', [
     '-std=c++17', '-O2', '-o', exe,
     join(here, 'bulksift_detect.cpp'), join(here, 'bulksift_match.cpp'),
-    join(here, 'parity_main.cpp'),
+    join(here, 'bulksift_describe.cpp'), join(here, 'parity_main.cpp'),
   ], { stdio: 'inherit' });
 } else {
   /*
@@ -64,7 +64,7 @@ if (hasClang) {
     '@echo off',
     'call "' + VCVARS + '" >nul',
     'cd /d "' + dir + '" || exit /b 1',
-    'cl /nologo /std:c++17 /O2 /EHsc /Fe:parity.exe bulksift_detect.cpp bulksift_match.cpp parity_main.cpp',
+    'cl /nologo /std:c++17 /O2 /EHsc /Fe:parity.exe bulksift_detect.cpp bulksift_match.cpp bulksift_describe.cpp parity_main.cpp',
     '',
   ].join('\r\n'));
   execFileSync('cmd', ['/c', bat], { stdio: 'inherit' });

@@ -76,6 +76,18 @@ for (let i = 0; i < meta.count; i++) {
   const r = index.search(q);
   const top = index.topK(q, 4);
 
+  // The quad the descriptor came from, so the C++ can rectify the same region
+  // from the same frame rather than being handed an already-canonical card.
+  const quad = det ? det.quad : null;
+  chunks.push(u32(quad ? 1 : 0));
+  if (quad) {
+    const qb = Buffer.alloc(64);
+    for (let j = 0; j < 4; j++) {
+      qb.writeDoubleLE(quad[j].x, j * 16);
+      qb.writeDoubleLE(quad[j].y, j * 16 + 8);
+    }
+    chunks.push(qb);
+  }
   chunks.push(u32(q.length), Buffer.from(q));
   chunks.push(u32(strip.length), Buffer.from(strip));
   chunks.push(i32(r.best.index), i32(r.best.distance));

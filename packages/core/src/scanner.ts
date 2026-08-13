@@ -10,7 +10,8 @@
 import { CANON_H, CANON_W, describe, describeStrip } from './descriptor.ts';
 import {
   detectCard, rectifyFrom, rotate180, sameView, scaleQuad, sourceOf,
-  type Component, type Detection, type LumaSource, type PixelSource, type WorkImage,
+  type Component, type Detection, type LumaSource, type PixelSource, type Quad,
+  type WorkImage,
 } from './detect.ts';
 import { CardIndex, type Candidate, type MatchResult } from './matcher.ts';
 import {
@@ -72,6 +73,19 @@ const FOOTER_BAND = 90;
 const CALIBRATE_EVERY = 8;
 const CALIBRATE_STEP = 0.02;
 const CALIBRATE_LIMIT = 0.08;
+
+/**
+ * A native rectify-and-describe, when one is available.
+ *
+ * Returns null to mean "not this time", and the scanner falls back to
+ * rectifying and describing in TypeScript. Taking the quad and the orientation
+ * rather than a canonical image is what keeps a 322 KB buffer out of the
+ * crossing - it exists only to become 96 bytes.
+ */
+export type Describer = (
+  quad: Quad,
+  flipped: boolean,
+) => { desc: Uint8Array; strip: Uint8Array } | null;
 
 export interface FrameResult {
   /** Where the card is in the frame, for drawing an overlay. */
@@ -201,6 +215,7 @@ export class Scanner {
     refineSource?: LumaSource & { scale: number },
     pixels?: PixelSource,
     blobs?: Component[],
+    describer?: Describer,
   ): FrameResult {
     // Where the card's own pixels are read from. A caller that already has the
     // frame in some interleaved layout hands it over as-is; anything else is
@@ -250,6 +265,24 @@ export class Scanner {
       return this.track(detection, this.lastResult, this.lastQuery!, timings);
     }
 
+    /**
+     * Describe the card at `bias`, natively when there is a native core.
+     *
+     * The TypeScript path is not an alternative implementation - it is the
+     * reference the C++ was checked against, and it runs whenever nothing
+     * native answered.
+     */
+    const describeAt = (bias: number, flip: boolean) => {
+      const q = scaleQuad(detection.quad, bias);
+      if (describer) {
+        const got = describer(q, flip);
+        if (got) return { desc: got.desc, strip: got.strip, canonical: null };
+      }
+      const up = rectifyFrom(src, q, CANON_W, CANON_H);
+      const oriented = flip ? rotate180(up, CANON_W, CANON_H) : up;
+      return { desc: describe(oriented), strip: null, canonical: oriented };
+    };
+
     const tDesc = performance.now();
     // Occasionally re-ask where the card really ends.
     //
@@ -265,12 +298,8 @@ export class Scanner {
       : [this.scaleBias];
     this.sinceCalibration = calibrating ? 0 : this.sinceCalibration + 1;
 
-    let upright = rectifyFrom(
-      src, scaleQuad(detection.quad, biases[0]), CANON_W, CANON_H,
-    );
-    let oriented = this.preferFlipped ? rotate180(upright, CANON_W, CANON_H) : upright;
-    let canonical = oriented;
-    let qa = describe(oriented);
+    let read = describeAt(biases[0], this.preferFlipped);
+    let qa = read.desc;
     timings.describe = performance.now() - tDesc;
 
     if (calibrating) {
@@ -278,19 +307,13 @@ export class Scanner {
       let bestBias = biases[0];
       let bestD = this.index.search(qa).best.distance;
       for (let i = 1; i < biases.length; i++) {
-        const up = rectifyFrom(
-          src, scaleQuad(detection.quad, biases[i]), CANON_W, CANON_H,
-        );
-        const or = this.preferFlipped ? rotate180(up, CANON_W, CANON_H) : up;
-        const q = describe(or);
-        const d = this.index.search(q).best.distance;
+        const trial = describeAt(biases[i], this.preferFlipped);
+        const d = this.index.search(trial.desc).best.distance;
         if (d < bestD) {
           bestD = d;
           bestBias = biases[i];
-          upright = up;
-          oriented = or;
-          canonical = or;
-          qa = q;
+          read = trial;
+          qa = trial.desc;
         }
       }
       this.scaleBias = Math.max(-CALIBRATE_LIMIT, Math.min(CALIBRATE_LIMIT, bestBias));
@@ -306,16 +329,15 @@ export class Scanner {
 
     if (result.best.index < 0 || result.best.distance > this.config.maxDistance) {
       const t2 = performance.now();
-      const other = this.preferFlipped ? upright : rotate180(upright, CANON_W, CANON_H);
-      const qb = describe(other);
+      const other = describeAt(this.scaleBias, !this.preferFlipped);
       timings.describe += performance.now() - t2;
       const t3 = performance.now();
-      const rb = this.index.search(qb);
+      const rb = this.index.search(other.desc);
       timings.search += performance.now() - t3;
       if (rb.best.distance < result.best.distance) {
         result = rb;
-        query = qb;
-        canonical = other;
+        query = other.desc;
+        read = other;
         this.preferFlipped = !this.preferFlipped;
       }
     }
@@ -333,7 +355,11 @@ export class Scanner {
     // descriptor's 336, so it costs about a tenth of a describe - far too little
     // to be worth predicting whether it will be needed, and the previous
     // near-tie gate meant the eight cases that most needed it never got it.
-    this.lastStrip = this.index.hasStrips ? describeStrip(canonical) : null;
+    // The footer comes back with the descriptor when a native core produced
+    // it; otherwise it is taken from the canonical card the fallback built.
+    this.lastStrip = !this.index.hasStrips
+      ? null
+      : read.strip ?? (read.canonical ? describeStrip(read.canonical) : null);
 
     this.reusedRun = 0;
     this.lastDetection = detection;
