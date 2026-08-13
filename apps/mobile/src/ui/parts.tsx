@@ -181,11 +181,13 @@ export function Stat({
 }
 
 /**
- * A change, with its direction shown twice - by colour and by a triangle.
+ * A change, with its direction shown three ways: colour, a triangle, and a sign.
  *
- * Twice because colour alone fails for the ~8% of men with a red-green
- * deficiency, and a portfolio app that cannot tell them up from down is
- * useless to them.
+ * Colour alone fails for the ~8% of men with a red-green deficiency, and a
+ * portfolio app that cannot tell them up from down is useless to them. The
+ * sign is there because a triangle can be missed at a glance and "$1,025.78"
+ * with no sign in front of it reads as a gain - which is the one mistake this
+ * line must never make.
  */
 export function Delta({
   amount, fraction, suffix, size = 'md',
@@ -204,7 +206,8 @@ export function Delta({
       <Text style={[
         size === 'sm' ? styles.deltaTextSm : styles.deltaText, { color: tint },
       ]}>
-        {money(Math.abs(amount))}{pct ? ` · ${pct}` : ''}{suffix ? ` ${suffix}` : ''}
+        {up ? '+' : '−'}{money(Math.abs(amount))}
+        {pct ? ` · ${pct}` : ''}{suffix ? ` ${suffix}` : ''}
       </Text>
     </View>
   );
