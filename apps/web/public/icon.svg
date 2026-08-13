@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PokeScan">
+  <rect width="512" height="512" rx="112" fill="#0b0e14"/>
+  <!-- card, tilted as if passing the lens -->
+  <g transform="rotate(-11 256 256)">
+    <rect x="150" y="118" width="212" height="276" rx="18" fill="#1a2030" stroke="#5cc8ff" stroke-width="10"/>
+    <rect x="172" y="142" width="168" height="118" rx="8" fill="#0b0e14"/>
+    <circle cx="256" cy="201" r="34" fill="none" stroke="#5cc8ff" stroke-width="10"/>
+    <path d="M222 201h68" stroke="#5cc8ff" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="256" cy="201" r="11" fill="#5cc8ff"/>
+    <rect x="172" y="286" width="120" height="12" rx="6" fill="#263049"/>
+    <rect x="172" y="314" width="86" height="12" rx="6" fill="#263049"/>
+  </g>
+  <!-- scan reticle corners -->
+  <g stroke="#86efac" stroke-width="16" stroke-linecap="round" fill="none">
+    <path d="M96 168V120a24 24 0 0 1 24-24h48"/>
+    <path d="M416 168V120a24 24 0 0 0-24-24h-48"/>
+    <path d="M96 344v48a24 24 0 0 0 24 24h48"/>
+    <path d="M416 344v48a24 24 0 0 1-24 24h-48"/>
+  </g>
+</svg>

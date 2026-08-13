@@ -1,0 +1,195 @@
+# BulkSift mobile builds.
+#
+# Adapted from the pipeline already proven on LUMEN, which ships to the App
+# Store from a Mac nobody owns. The two hard-won pieces are kept verbatim in
+# spirit:
+#
+#   1. ARCHIVE UNSIGNED, SIGN ON EXPORT. Signing at archive time is what fails
+#      on a cloud runner, because the certificate lives in a temporary keychain.
+#      `-exportArchive -allowProvisioningUpdates` with an App Store Connect API
+#      key does the signing, and creates the App ID and provisioning profile on
+#      first run.
+#   2. An ASC API key, never an Apple ID password. Nothing here needs a human.
+#
+# What differs from LUMEN: that app is Capacitor, this one is Expo/React Native
+# with native modules (VisionCamera), so the iOS project does not exist in the
+# repo - `expo prebuild` generates it, and CocoaPods has to run before xcodebuild.
+#
+# Secrets this needs (Settings -> Secrets and variables -> Actions):
+#   ASC_KEY_ID        the App Store Connect API key id      (e.g. HM6QQBPLWW)
+#   ASC_ISSUER_ID     the issuer id above the key list
+#   ASC_KEY_P8_B64    base64 of the AuthKey_XXXX.p8 file
+#   APPLE_TEAM_ID     the 10-character team id  (this account: 6U7VZ57P8K)
+# Optional, for the Android job:
+#   ANDROID_KEYSTORE_B64 / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD / ANDROID_STORE_PASSWORD
+
+name: mobile
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: 'Upload the iOS build to TestFlight'
+        type: boolean
+        default: true
+      build_android:
+        description: 'Also build the Android app bundle'
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: mobile
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ---------------------------------------------------------------- android
+  android:
+    runs-on: ubuntu-latest
+    # Off by default: the immediate need is TestFlight, and a red Android job
+    # next to a green iOS one teaches you to ignore the red.
+    if: ${{ inputs.build_android }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install
+        run: npm ci --prefix apps/mobile
+
+      - name: Stage the card index into the app bundle
+        run: node apps/mobile/scripts/sync-data.mjs
+
+      - name: Generate the native project
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform android --clean --no-install
+
+      # The `secrets` context cannot be used in an `if:` expression, so the
+      # "is a key configured" test happens inside the script instead.
+      - name: Restore the upload key, if one is configured
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > apps/mobile/android/upload.jks
+          fi
+
+      - name: Build
+        working-directory: apps/mobile/android
+        run: |
+          if [ -f upload.jks ]; then
+            ./gradlew :app:bundleRelease -x lint -x test \
+              -Pandroid.injected.signing.store.file=$PWD/upload.jks \
+              -Pandroid.injected.signing.store.password='${{ secrets.ANDROID_STORE_PASSWORD }}' \
+              -Pandroid.injected.signing.key.alias='${{ secrets.ANDROID_KEY_ALIAS }}' \
+              -Pandroid.injected.signing.key.password='${{ secrets.ANDROID_KEY_PASSWORD }}'
+          else
+            echo "No upload key configured - building an unsigned APK for testing."
+            ./gradlew :app:assembleRelease -x lint -x test
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: |
+            apps/mobile/android/app/build/outputs/bundle/release/*.aab
+            apps/mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------------- ios
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install
+        run: npm ci --prefix apps/mobile
+
+      - name: Stage the card index into the app bundle
+        run: node apps/mobile/scripts/sync-data.mjs
+
+      - name: Generate the native project
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Pods
+        working-directory: apps/mobile/ios
+        run: pod install --repo-update
+
+      - name: Install the App Store Connect key
+        run: |
+          mkdir -p ~/private_keys
+          echo "${{ secrets.ASC_KEY_P8_B64 }}" | base64 -d \
+            > ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+          chmod 600 ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+      - name: Archive (unsigned)
+        working-directory: apps/mobile/ios
+        run: |
+          SCHEME=$(ls -d *.xcworkspace | head -1 | sed 's/\.xcworkspace//')
+          echo "scheme: $SCHEME"
+          echo "SCHEME=$SCHEME" >> "$GITHUB_ENV"
+          # Signing here is what fails on a runner: the identity lives in a
+          # temporary keychain, so codesign knows its name and has no key.
+          # Export does the signing instead.
+          xcodebuild -workspace "$SCHEME.xcworkspace" -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/BulkSift.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            archive
+
+      - name: Export and sign
+        working-directory: apps/mobile/ios
+        run: |
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>stripSwiftSymbols</key><true/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          # -allowProvisioningUpdates is what registers com.rldgames.bulksift and
+          # creates its provisioning profile the first time this runs.
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/BulkSift.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: ${{ runner.temp }}/export/*.ipa
+          if-no-files-found: error
+
+      - name: Upload to TestFlight
+        if: ${{ inputs.upload_to_testflight || startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          xcrun altool --upload-app -f "$RUNNER_TEMP"/export/*.ipa -t ios \
+            --apiKey ${{ secrets.ASC_KEY_ID }} \
+            --apiIssuer ${{ secrets.ASC_ISSUER_ID }}

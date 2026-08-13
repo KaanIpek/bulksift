@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "BulkSift",
+    "slug": "bulksift",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rldgames.bulksift",
+      "infoPlist": {
+        "NSCameraUsageDescription": "BulkSift uses the camera to identify trading cards and show their current market price. Images are processed on your device and are not uploaded.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "icon": "./assets/icon.png",
+      "buildNumber": "16"
+    },
+    "android": {
+      "package": "com.rldgames.bulksift",
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0b0e14"
+      }
+    },
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0b0e14"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "owner": "rldranger",
+    "extra": {
+      "eas": {
+        "projectId": "5d416ed8-0f50-4a86-a395-02644b37593e"
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    // packages/core imports with explicit .ts extensions so it can also run
+    // under `node --experimental-strip-types` for the engine test suite.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {
+      "@bulksift/core": ["./src/core/index.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  // test/ runs under node, not in the app bundle
+  "exclude": ["test"]
+}

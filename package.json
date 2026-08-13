@@ -1,0 +1,14 @@
+{
+  "name": "bulksift",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Real-time Pok\u00e9mon TCG card recognition with live US market prices",
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "data": "python tools/build_catalogue.py && python tools/download_images.py && python tools/fallback_images.py && python tools/build_index.py",
+    "sync": "node apps/mobile/scripts/sync-data.mjs && node scripts/sync-web-data.mjs",
+    "dev": "npm run dev --prefix apps/web",
+    "typecheck": "npm run --prefix apps/web typecheck && npm run --prefix apps/mobile typecheck",
+    "prices": "python tools/refresh_prices.py && npm run sync"
+  }
+}

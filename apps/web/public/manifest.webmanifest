@@ -1,0 +1,23 @@
+{
+  "name": "BulkSift \u2014 TCG card scanner & live prices",
+  "short_name": "BulkSift",
+  "description": "Scan trading cards with a fixed camera and read their current US market price. Recognition runs entirely on your device, so it works offline. Covers the full English Pok\u00e9mon TCG catalogue, with more games to follow.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "categories": [
+    "utilities",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

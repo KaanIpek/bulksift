@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0e14" />
+    <title>BulkSift — TCG card scanner &amp; live prices</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="description" content="Scan trading cards with a fixed camera and read their current US market price. Recognition runs entirely on your device, offline." />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="brand">
+        <span class="dot" id="statusDot"></span>
+        <strong>BulkSift</strong>
+      </div>
+      <div class="stats" id="engineStats">loading engine…</div>
+      <div class="controls">
+        <button id="btnCamera" class="btn primary">Start camera</button>
+        <button id="btnDemo" class="btn">Demo feed</button>
+        <button id="btnStop" class="btn" disabled>Stop</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="stage">
+        <div class="viewport">
+          <video id="video" playsinline muted></video>
+          <canvas id="demo"></canvas>
+          <canvas id="overlay"></canvas>
+          <div class="idle" id="idleHint">
+            <p>Fix the camera in place and pass cards through the frame.</p>
+            <p class="muted">No camera here? Use <strong>Demo feed</strong> to run the engine
+              against simulated card passes.</p>
+          </div>
+        </div>
+        <div class="readout">
+          <div class="live" id="liveCard">
+            <span class="muted">waiting for a card…</span>
+          </div>
+          <div class="perf" id="perf"></div>
+        </div>
+      </section>
+
+      <aside class="session">
+        <div class="session-head">
+          <div>
+            <div class="label">Session total</div>
+            <div class="total" id="sessionTotal">$0.00</div>
+          </div>
+          <div class="right">
+            <div class="label">Cards</div>
+            <div class="count" id="sessionCount">0</div>
+          </div>
+          <div class="head-actions">
+            <button id="btnExport" class="btn small" disabled>Export CSV</button>
+            <button id="btnClear" class="btn small">Clear</button>
+          </div>
+        </div>
+        <label class="alert-row">
+          <span class="label">Flag cards over</span>
+          <span class="dollar">$</span>
+          <input id="alertThreshold" class="thr" type="number" min="0" step="1" value="20" />
+          <span class="muted small-note" id="alertCount"></span>
+        </label>
+        <ul class="scans" id="scanList"></ul>
+        <div class="foot" id="priceMeta"></div>
+      </aside>
+    </main>
+
+    <div class="modal hidden" id="ambiguityModal">
+      <div class="sheet">
+        <h3>Which printing?</h3>
+        <p class="muted" id="ambiguityWhy"></p>
+        <div id="ambiguityOptions" class="options"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
