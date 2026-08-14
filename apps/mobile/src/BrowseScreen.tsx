@@ -55,7 +55,15 @@ export default function BrowseScreen({
   setFilter: string | null;
   setNameFor: (setId: string) => string;
   onClearSetFilter: () => void;
-  onAdd: (card: CardRecord, variant: string, price: number | null) => void;
+  /**
+   * Open the add sheet for this card.
+   *
+   * Browse used to add straight from the tile: priciest variant, Near Mint, one
+   * copy, into whichever collection happened to be active, with no confirmation.
+   * Three of those four guesses change what the card is worth, and the fourth
+   * changes which box it lands in.
+   */
+  onAdd: (card: CardRecord) => void;
   wishedIds: Set<string>;
   onWish: (card: CardRecord, price: number | null) => void;
 }) {
@@ -179,7 +187,7 @@ export default function BrowseScreen({
               price={best?.market ?? null}
               owned={ownedIds.has(item.i)}
               wished={wishedIds.has(item.i)}
-              onAdd={() => onAdd(item, best?.variant ?? 'Normal', best?.market ?? null)}
+              onAdd={() => onAdd(item)}
               onWish={() => onWish(item, best?.market ?? null)}
             />
           );
@@ -240,9 +248,14 @@ function Tile({
   return (
     <View style={{ width }}>
       <View style={{ height: cardHeight(width) }}>
-        <CardImage
-          cardId={card.i} number={card.u} rarity={card.r} width={width} radius={r.md}
-        />
+        {/* The picture opens the same sheet as the button: a card you can see
+            but not act on is a dead end, and this is the screen where you are
+            deciding whether a printing is the one in your hand. */}
+        <Pressable onPress={onAdd}>
+          <CardImage
+            cardId={card.i} number={card.u} rarity={card.r} width={width} radius={r.md}
+          />
+        </Pressable>
         <Pressable
           onPress={onWish}
           hitSlop={6}

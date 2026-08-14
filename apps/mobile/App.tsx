@@ -49,6 +49,7 @@ import {
 } from './src/library';
 import Paywall, { type PaywallReason } from './src/Paywall';
 import CollectionBar from './src/CollectionBar';
+import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
 import { adsAvailable, restore, showRewardedAd, storeState, subscribe } from './src/store';
 import { record, type Point } from './src/history';
 import { loadEngine, type LoadedEngine } from './src/engine';
@@ -88,6 +89,7 @@ export default function App() {
   const [ent, setEnt] = useState<Entitlement>(() => fresh(Date.now()));
   const [loaded, setLoaded] = useState(false);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
+  const [adding, setAdding] = useState<AddTarget | null>(null);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [setFilter, setSetFilter] = useState<string | null>(null);
 
@@ -285,9 +287,25 @@ export default function App() {
     return entryKey(cardId, pick.name, 'NM');
   }, [engine]);
 
+  /**
+   * Add by hand, with every choice made explicitly.
+   *
+   * Unlike a scan this costs no allowance: nothing was recognised, the user
+   * typed a name and picked a printing themselves, and charging for that would
+   * be charging for using a search box.
+   */
   const addManual = useCallback(
-    (card: CardRecord, variant: string, price: number | null) => {
-      setEntries((prev) => addScan(prev, card, variant, price, 'NM', false));
+    (
+      card: CardRecord, variant: string, price: number | null,
+      condition: ConditionId, quantity: number, collectionId: string,
+    ) => {
+      setLibrary((lib) => updateCollection(lib, collectionId, (col) => {
+        let entries = col.entries;
+        for (let i = 0; i < quantity; i++) {
+          entries = addScan(entries, card, variant, price, condition, false);
+        }
+        return { ...col, entries };
+      }, Date.now()));
     },
     [],
   );
@@ -428,7 +446,8 @@ export default function App() {
             setFilter={setFilter}
             setNameFor={(id) => engine.sets.find((x) => x.id === id)?.name ?? 'Set'}
             onClearSetFilter={() => setSetFilter(null)}
-            onAdd={addManual}
+            onAdd={(card) =>
+              setAdding({ card, variants: variantsFor(card.i) })}
             wishedIds={wishedIds}
             onWish={(card, price) => setWishlist((prev) => toggleWish(prev, card, price))}
           />
@@ -453,6 +472,13 @@ export default function App() {
           );
         })}
       </View>
+
+      <AddCardSheet
+        target={adding}
+        library={library}
+        onClose={() => setAdding(null)}
+        onAdd={addManual}
+      />
 
       <Paywall
         reason={paywall}
