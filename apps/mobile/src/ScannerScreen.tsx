@@ -48,7 +48,8 @@ import { c, s as sp, t as ty } from './ui/theme';
 import { ScanIcon } from './ui/icons';
 import { Button } from './ui/parts';
 import {
-  ScanFeed, ScanOverlay, ScanSummary, ScanViewport, type Aim,
+  ScanFeed, ScanOverlay, ScanSummary, ScanViewport,
+  type Aim, type LiveCard, type ScannedRow,
 } from './ui/ScanChrome';
 import { cameraPixels, lumaSource, toWorkGrid, type FrameInfo } from './frame';
 import { isNativeAvailable, nativeDescriber, nativeStages } from '../modules/bulksift-detect';
@@ -103,12 +104,16 @@ export default function ScannerScreen({
   sessionCount,
   sessionValue,
   onOpenCollection,
+  onUndo,
+  onRedirect,
 }: {
   engine: LoadedEngine;
-  onHit: (hit: ScanHit) => void;
+  onHit: (hit: ScanHit) => string;
   sessionCount: number;
   sessionValue: number;
   onOpenCollection: () => void;
+  onUndo: (entryKey: string) => void;
+  onRedirect: (entryKey: string, cardId: string) => string;
 }) {
   const { hasPermission, requestPermission } = useCameraPermission();
   // Prefer the rear camera, but fall back to whatever exists. Asking for 'back'
@@ -118,9 +123,7 @@ export default function ScannerScreen({
   const backDevice = useCameraDevice('back');
   const allDevices = useCameraDevices();
   const device = backDevice ?? allDevices[0];
-  const [live, setLive] = useState<
-    { name: string; set: string; setId: string; number: string } | null
-  >(null);
+  const [live, setLive] = useState<LiveCard | null>(null);
   /**
    * How much of the frame the card covers, 0..1.
    *
@@ -138,7 +141,7 @@ export default function ScannerScreen({
   // Live counters. "Nothing happens" is not a useful report; these say which
   // stage is stalling - frames arriving, cards found, or matches rejected.
   const statsRef = useRef({
-    frames: 0, detected: 0, matched: 0, bestDistance: -1,
+    frames: 0, detected: 0, matched: 0, bestDistance: -1, margin: -1, refused: 0,
     pack: 0, detect: 0, describe: 0, search: 0, reused: 0, shownAt: 0,
     sections: '' ,
   });
@@ -151,10 +154,7 @@ export default function ScannerScreen({
    * in", and answering it here keeps the collection tab from having to be the
    * scanning UI as well.
    */
-  const [recent, setRecent] = useState<Array<{
-    key: string; name: string; set: string; setId: string; number: string;
-    rarity: string | null; price: number | null; unsure: boolean;
-  }>>([]);
+  const [recent, setRecent] = useState<ScannedRow[]>([]);
 
   const engineRef = useRef<LoadedEngine | null>(null);
   const lastTickRef = useRef(0);
@@ -263,6 +263,16 @@ export default function ScannerScreen({
         st.matched++;
         st.bestDistance = result.preview.distance;
       }
+      /*
+       * The margin is the number that now decides acceptance, so it is the one
+       * worth reading off a real device. The gate it replaced was set from
+       * frames rendered on a desktop, which is exactly how it came to sit where
+       * an empty table passes it.
+       */
+      if (result.nameMargin != null && Number.isFinite(result.nameMargin)) {
+        st.margin = result.nameMargin;
+      }
+      if (result.detection && !result.preview) st.refused++;
       // Which part of the descriptor disagrees says why a read is poor -
       // colour alone means channels, art alone means alignment, all four alike
       // means optics. Shown as a percentage so the four are comparable.
@@ -291,6 +301,8 @@ export default function ScannerScreen({
           `frames ${st.frames} · found ${st.detected} · ` +
           `matched ${st.matched}` +
           (st.bestDistance >= 0 ? ` · d=${st.bestDistance}` : '') +
+          (st.margin >= 0 ? ` m=${st.margin}` : '') +
+          (st.refused ? ` · refused ${st.refused}` : '') +
           ` · pack ${ms(st.pack)} detect ${ms(st.detect)} desc ${ms(st.describe)} ` +
           `search ${ms(st.search)} ms · reused ${Math.round((st.reused / n) * 100)}%` +
           (st.sections ? ` · ${st.sections}` : ''),
@@ -305,7 +317,7 @@ export default function ScannerScreen({
         setLive((prev) => (
           prev && prev.name === card.n && prev.set === card.S
             ? prev
-            : { name: card.n, set: card.S, setId: card.s, number: card.u }
+            : { name: card.n, set: card.S, cardId: card.i, number: card.u }
         ));
       } else if (!result.detection) {
         setLive((prev) => (prev === null ? prev : null));
@@ -313,17 +325,29 @@ export default function ScannerScreen({
 
       if (result.hit) {
         const hit = result.hit;
-        onHit(hit);
+        // `onHit` returns the collection key it wrote to, so a row in the feed
+        // can undo or redirect itself without searching the collection for a
+        // card that may since have been merged into an existing pile.
+        const entryKey = onHit(hit);
         setRecent((prev) => [
           {
             key: `${hit.card.i}-${seqRef.current++}`,
+            entryKey,
             name: hit.card.n,
             set: hit.card.S,
-            setId: hit.card.s,
+            cardId: hit.card.i,
             number: hit.card.u,
             rarity: hit.card.r ?? null,
             price: hit.topMarket,
             unsure: !!hit.ambiguity,
+            others: (hit.runnersUp ?? []).slice(0, 3).map((x) => ({
+              cardId: x.card.i,
+              name: x.card.n,
+              set: x.card.S,
+              number: x.card.u,
+              rarity: x.card.r ?? null,
+              price: x.topMarket,
+            })),
           },
           ...prev,
         ].slice(0, 5));
@@ -491,7 +515,12 @@ export default function ScannerScreen({
         }}
       />
 
-      <ScanFeed rows={recent} onOpenCollection={onOpenCollection} />
+      <ScanFeed
+        rows={recent}
+        onOpenCollection={onOpenCollection}
+        onUndo={onUndo}
+        onRedirect={onRedirect}
+      />
 
       {selfTest ? (
         <View style={styles.selfTest}>

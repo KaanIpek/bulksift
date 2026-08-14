@@ -208,7 +208,7 @@ export default function CollectionScreen({
                 style={({ pressed }) => [styles.shelfCard, pressed && { opacity: 0.7 }]}
               >
                 <CardImage
-                  setId={e.setId} number={e.number} rarity={e.rarity} width={62}
+                  cardId={e.cardId} number={e.number} rarity={e.rarity} width={62}
                 />
                 <Text style={styles.shelfPrice} numberOfLines={1}>
                   {moneyShort(entryValue(e))}
@@ -281,7 +281,7 @@ export default function CollectionScreen({
               ]}
             >
               <CardImage
-                setId={id.slice(0, id.lastIndexOf('-'))}
+                cardId={id}
                 number={id.slice(id.lastIndexOf('-') + 1)}
                 width={96}
                 radius={r.sm}
@@ -324,7 +324,7 @@ export default function CollectionScreen({
           contentContainerStyle={wishlist.length ? styles.list : styles.listEmpty}
           renderItem={({ item }) => (
             <View style={styles.row}>
-              <CardImage setId={setIdOf(item.cardId)} number={item.number} width={THUMB} />
+              <CardImage cardId={item.cardId} number={item.number} width={THUMB} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
                 <Text style={styles.rowMeta} numberOfLines={1}>
@@ -428,7 +428,7 @@ function Row({ entry, onPress }: { entry: Entry; onPress: () => void }) {
     >
       <View>
         <CardImage
-          setId={entry.setId} number={entry.number} rarity={entry.rarity} width={THUMB}
+          cardId={entry.cardId} number={entry.number} rarity={entry.rarity} width={THUMB}
         />
         {entry.quantity > 1 ? (
           <View style={styles.qty}>

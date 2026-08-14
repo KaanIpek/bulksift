@@ -33,7 +33,7 @@ const ScannerScreen = Platform.OS === 'web'
   : (require('./src/ScannerScreen').default as typeof import('./src/ScannerScreen').default);
 import SetsScreen from './src/SetsScreen';
 import {
-  addScan, defaultVariant, entryValue, reclassify, regrade, repoint, setQuantity,
+  addScan, defaultVariant, entryKey, entryValue, reclassify, regrade, repoint, setQuantity,
   toggleWish, totalCards, totalValue, wishlistValue,
   type ConditionId, type Entry, type Grade, type WishEntry,
 } from './src/collection';
@@ -127,12 +127,47 @@ export default function App() {
     [engine],
   );
 
-  const onHit = useCallback((hit: ScanHit) => {
+  /*
+   * Returns the collection key the scan landed in.
+   *
+   * The scan feed needs it to undo or redirect a row. Recomputing the key in
+   * the feed would work today and break the first time a scan merges into an
+   * existing pile under a different condition, so the writer says where it
+   * wrote instead of the reader guessing.
+   */
+  const onHit = useCallback((hit: ScanHit): string => {
     const variants = engine?.scanner.pricesFor(hit.card.i) ?? [];
     const pick = defaultVariant(variants);
     setEntries((prev) =>
       addScan(prev, hit.card, pick.name, pick.price, 'NM', !!hit.ambiguity),
     );
+    return entryKey(hit.card.i, pick.name, 'NM');
+  }, [engine]);
+
+  /** Take one copy back off a pile - the scan feed's "that was not a card". */
+  const undoScan = useCallback((key: string) => {
+    setEntries((prev) => {
+      const found = prev.find((e) => e.key === key);
+      if (!found) return prev;
+      return setQuantity(prev, key, found.quantity - 1);
+    });
+  }, []);
+
+  /**
+   * The scanner was close but wrong: take the copy off the card it chose and
+   * put one on the card the user picked instead.
+   */
+  const redirectScan = useCallback((key: string, cardId: string): string => {
+    const card = engine?.byId.get(cardId);
+    if (!card) return key;
+    const variants = engine!.scanner.pricesFor(cardId);
+    const pick = defaultVariant(variants);
+    setEntries((prev) => {
+      const found = prev.find((e) => e.key === key);
+      const without = found ? setQuantity(prev, key, found.quantity - 1) : prev;
+      return addScan(without, card, pick.name, pick.price, 'NM', false);
+    });
+    return entryKey(cardId, pick.name, 'NM');
   }, [engine]);
 
   const addManual = useCallback(
@@ -220,6 +255,8 @@ export default function App() {
               sessionCount={sessionEntries.reduce((n, e) => n + e.quantity, 0)}
               sessionValue={sessionEntries.reduce((v, e) => v + entryValue(e), 0)}
               onOpenCollection={() => setTab('collection')}
+              onUndo={undoScan}
+              onRedirect={redirectScan}
             />
           ) : (
             <ScanPreview
@@ -330,21 +367,27 @@ function ScanPreview({
   onOpenCollection: () => void;
 }) {
   const [scanning, setScanning] = useState(true);
-  const rows = recent.map((e) => ({
+  const rows = recent.map((e, i) => ({
     key: e.key,
+    entryKey: e.key,
     name: e.name,
     set: e.setName,
-    setId: e.setId,
+    cardId: e.cardId,
     number: e.number,
     rarity: e.rarity,
     price: e.unitPrice,
     unsure: !!e.needsPrinting,
+    // Stand-ins for the matcher's runners-up, which only exist on a real scan.
+    others: recent.filter((_, j) => j !== i).slice(0, 3).map((o) => ({
+      cardId: o.cardId, name: o.name, set: o.setName,
+      number: o.number, rarity: o.rarity, price: o.unitPrice,
+    })),
   }));
   const live = recent[0]
     ? {
       name: recent[0].name,
       set: recent[0].setName,
-      setId: recent[0].setId,
+      cardId: recent[0].cardId,
       number: recent[0].number,
     }
     : null;
@@ -363,7 +406,12 @@ function ScanPreview({
         scanning={scanning}
         onToggle={() => setScanning((v) => !v)}
       />
-      <ScanFeed rows={rows} onOpenCollection={onOpenCollection} />
+      <ScanFeed
+        rows={rows}
+        onOpenCollection={onOpenCollection}
+        onUndo={() => {}}
+        onRedirect={(k) => k}
+      />
     </View>
   );
 }

@@ -5,17 +5,17 @@
  * of text where a collector expects to see the card. That is the difference
  * between a database and something worth opening.
  *
- * Three things this deliberately does *not* do:
+ * The picture comes off the device, not the network. The catalogue's image host
+ * looked like the obvious source and is not a dependable one: asked for a card
+ * from a 2026 set it answers 200 OK with a picture of a card *back*, so there
+ * is no error to catch and the app shows the wrong card confidently. Cards from
+ * Chaos Rising, Ascended Heroes and Black Bolt all did that on a device. So
+ * every thumbnail ships with the app - see `thumbs.ts`.
  *
- *  - It does not bundle the art. 20,444 cards is four gigabytes, and even a
- *    thumbnail pack is tens of megabytes for pictures that are decoration.
- *  - It does not let a missing picture break a row. The network can be off -
- *    recognition and prices are on-device and stay that way - so a card with no
- *    art shows a slot in its rarity colour with its number, which is still a
- *    legible, deliberate-looking thing rather than a grey hole.
- *  - It does not retry. A failed image stays failed for that mount; a list that
- *    re-requests 200 missing pictures while you scroll is worse than no
- *    pictures at all.
+ * What this deliberately does not do is retry. A card whose picture is missing
+ * from the pack - there are two, the Unown numbered "!" and "?" - shows a slot
+ * in its rarity colour with its number, which is a legible, deliberate-looking
+ * thing rather than a grey hole.
  *
  * The proportions are the real ones: a Pokémon card is 63 x 88 mm, which the
  * catalogue's own images keep at 245 x 342.
@@ -24,39 +24,45 @@
 import { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { artUrl, logoUrl, symbolUrl } from './art';
 import { c, rarityTone, t } from './theme';
+import { cachedThumb, thumbUri } from './thumbs';
 
 /** Height for a given width, at the real card ratio. */
 export const CARD_RATIO = 342 / 245;
 export const cardHeight = (width: number) => Math.round(width * CARD_RATIO);
 
 export default function CardImage({
-  setId,
+  cardId,
   number,
   width,
   rarity,
-  hires = false,
   radius,
   dim,
 }: {
-  setId: string;
+  /** The catalogue id. Not derivable from set and number - 26 cards differ. */
+  cardId: string;
+  /** Printed collector number, shown when there is no picture. */
   number: string;
   width: number;
   rarity?: string | null;
-  /** Ask for the large scan. Worth it for a card filling half the screen. */
-  hires?: boolean;
   radius?: number;
   /** Draw it knocked back, for cards you do not own yet. */
   dim?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
+  // Start from the cache so a row that has been seen draws its picture on the
+  // first paint rather than flashing an empty slot on every scroll.
+  const [uri, setUri] = useState<string | null>(() => cachedThumb(cardId));
   const height = cardHeight(width);
   const rad = radius ?? Math.max(3, Math.round(width * 0.055));
 
-  // A recycled row can be handed a different card, and a previous failure must
-  // not follow it there.
-  useEffect(() => { setFailed(false); }, [setId, number, hires]);
+  useEffect(() => {
+    const ready = cachedThumb(cardId);
+    if (ready) { setUri(ready); return; }
+    let live = true;
+    setUri(null);
+    void thumbUri(cardId).then((u) => { if (live) setUri(u); });
+    return () => { live = false; };
+  }, [cardId]);
 
   const frame = {
     width, height, borderRadius: rad,
@@ -66,25 +72,18 @@ export default function CardImage({
     opacity: dim ? 0.45 : 1,
   };
 
-  if (failed) {
+  if (!uri) {
     return (
       <View style={[frame, styles.fallback]}>
         <View style={[styles.pip, { backgroundColor: rarityTone(rarity) }]} />
-        <Text style={styles.fallbackNum} numberOfLines={1}>
-          {number}
-        </Text>
+        <Text style={styles.fallbackNum} numberOfLines={1}>{number}</Text>
       </View>
     );
   }
 
   return (
     <View style={frame}>
-      <Image
-        source={{ uri: artUrl(setId, number, hires) }}
-        style={{ width, height }}
-        resizeMode="cover"
-        onError={() => setFailed(true)}
-      />
+      <Image source={{ uri }} style={{ width, height }} resizeMode="cover" />
     </View>
   );
 }
@@ -96,10 +95,12 @@ const styles = StyleSheet.create({
 });
 
 /**
- * A set's symbol, which is tiny and often has no transparency to spare.
+ * A set's symbol and logo still come from the network.
  *
- * Shown at a fixed 18 px because that is roughly how big it is printed on the
- * card, and any bigger it just looks like a blurry stamp.
+ * They are one image per set rather than one per card, they are decoration on a
+ * screen that reads fine without them, and bundling 174 more files to save a
+ * few kilobytes of traffic is not a trade worth making. Both fall back to
+ * nothing rather than to a placeholder.
  */
 export function SetSymbol({ setId, size = 18 }: { setId: string; size?: number }) {
   const [failed, setFailed] = useState(false);
@@ -107,7 +108,7 @@ export function SetSymbol({ setId, size = 18 }: { setId: string; size?: number }
   if (failed) return <View style={{ width: size, height: size }} />;
   return (
     <Image
-      source={{ uri: symbolUrl(setId) }}
+      source={{ uri: `https://images.pokemontcg.io/${setId}/symbol.png` }}
       style={{ width: size, height: size }}
       resizeMode="contain"
       onError={() => setFailed(true)}
@@ -115,9 +116,7 @@ export function SetSymbol({ setId, size = 18 }: { setId: string; size?: number }
   );
 }
 
-/**
- * A set's logo. Falls back to the set's name, which is what a logo says anyway.
- */
+/** A set's logo. Falls back to the set's name, which is what a logo says anyway. */
 export function SetLogo({
   setId, name, width, height = 42,
 }: { setId: string; name: string; width: number; height?: number }) {
@@ -132,7 +131,7 @@ export function SetLogo({
   }
   return (
     <Image
-      source={{ uri: logoUrl(setId) }}
+      source={{ uri: `https://images.pokemontcg.io/${setId}/logo.png` }}
       style={{ width, height }}
       resizeMode="contain"
       onError={() => setFailed(true)}

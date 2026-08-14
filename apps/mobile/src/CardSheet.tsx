@@ -81,8 +81,8 @@ export default function CardSheet({
           <View style={styles.head}>
             <View style={shadow.high}>
               <CardImage
-                setId={entry.setId} number={entry.number} rarity={entry.rarity}
-                width={artW} hires radius={r.sm}
+                cardId={entry.cardId} number={entry.number} rarity={entry.rarity}
+                width={artW} radius={r.sm}
               />
             </View>
 
@@ -139,10 +139,10 @@ export default function CardSheet({
                 contentContainerStyle={styles.printings}
               >
                 {[
-                  { card: null as CardRecord | null, setId: entry.setId, number: entry.number,
-                    setName: entry.setName },
+                  { card: null as CardRecord | null, cardId: entry.cardId,
+                    number: entry.number, setName: entry.setName },
                   ...target.alternatives.map((a) => ({
-                    card: a, setId: a.s, number: a.u, setName: a.S,
+                    card: a, cardId: a.i, number: a.u, setName: a.S,
                   })),
                 ].map((opt) => {
                   const alt = opt.card;
@@ -163,7 +163,7 @@ export default function CardSheet({
                       ]}
                     >
                       <CardImage
-                        setId={opt.setId} number={opt.number} width={78} radius={r.sm}
+                        cardId={opt.cardId} number={opt.number} width={78} radius={r.sm}
                       />
                       {isCurrent ? (
                         <View style={styles.printingTick}>

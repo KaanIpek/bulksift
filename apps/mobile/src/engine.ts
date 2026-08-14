@@ -12,6 +12,7 @@ import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { nativeIndex } from '../modules/bulksift-detect';
+import { loadThumbs } from './ui/thumbs';
 import {
   CardIndex,
   Scanner,
@@ -143,6 +144,14 @@ export async function loadEngine(): Promise<LoadedEngine> {
   const accel = nativeIndex(indexBytes);
   if (accel) index.useAccelerator(accel);
   const cards: CardRecord[] = loadCards(compactCards);
+  /*
+   * Point the thumbnail pack at the catalogue.
+   *
+   * Only the 0.3 MB offset table is parsed here; the 57 MB of pictures is a
+   * file the app reads ranges out of, never a buffer it holds, and locating it
+   * is left to run in the background so no picture ever delays a price.
+   */
+  await loadThumbs(cards.map((x) => x.i));
   const scanner = new Scanner(index, cards, priceBook);
 
   let priced = 0;

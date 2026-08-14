@@ -13,32 +13,45 @@
  * knows what a frame is.
  */
 
-import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import CardImage from './CardImage';
-import { ScanIcon } from './icons';
+import { ChevronIcon, ScanIcon, TrashIcon } from './icons';
 import { Badge } from './parts';
 import { c, money, r, s, t } from './theme';
 
 /** How well the card is framed, which is the one thing the user controls. */
 export type Aim = 'idle' | 'near' | 'good';
 
-export interface ScannedRow {
-  key: string;
+export interface Candidate {
+  cardId: string;
   name: string;
   set: string;
-  setId: string;
+  number: string;
+  rarity: string | null;
+  price: number | null;
+}
+
+export interface ScannedRow {
+  key: string;
+  /** Collection entry key, so a row can be removed or replaced. */
+  entryKey: string;
+  name: string;
+  set: string;
+  cardId: string;
   number: string;
   rarity: string | null;
   price: number | null;
   unsure: boolean;
+  /** What the matcher's next best answers were. */
+  others: Candidate[];
 }
 
 export interface LiveCard {
   name: string;
   set: string;
-  setId: string;
+  cardId: string;
   number: string;
 }
 
@@ -78,7 +91,7 @@ export function ScanOverlay({
       <View pointerEvents="none" style={styles.hud}>
         {live ? (
           <>
-            <CardImage setId={live.setId} number={live.number} width={30} radius={3} />
+            <CardImage cardId={live.cardId} number={live.number} width={30} radius={3} />
             <View style={{ flex: 1 }}>
               <Text style={styles.hudText} numberOfLines={1}>{live.name}</Text>
               <Text style={styles.hudSub} numberOfLines={1}>{live.set}</Text>
@@ -149,8 +162,26 @@ export function ScanSummary({
 }
 
 export function ScanFeed({
-  rows, onOpenCollection,
-}: { rows: ScannedRow[]; onOpenCollection: () => void }) {
+  rows, onOpenCollection, onUndo, onRedirect,
+}: {
+  rows: ScannedRow[];
+  onOpenCollection: () => void;
+  onUndo: (entryKey: string) => void;
+  onRedirect: (entryKey: string, cardId: string) => string;
+}) {
+  /*
+   * Which row is open for correction.
+   *
+   * A bulk scan is a stream of small decisions the machine makes for you, and
+   * some of them are wrong - a misread costs nothing to the total and is still
+   * a card you do not own sitting in your collection. You can see it is wrong
+   * from the picture in a quarter of a second; the only thing missing was a way
+   * to say so without leaving the screen and hunting for it in a list of four
+   * hundred.
+   */
+  const [open, setOpen] = useState<string | null>(null);
+  const [keys, setKeys] = useState<Record<string, string>>({});
+
   if (!rows.length) {
     return (
       <View style={styles.feedWrap}>
@@ -164,28 +195,90 @@ export function ScanFeed({
       </View>
     );
   }
+
+  const keyFor = (x: ScannedRow) => keys[x.key] ?? x.entryKey;
+
   return (
-    <View style={styles.feedWrap}>
+    <ScrollView
+      style={styles.feedWrap}
+      contentContainerStyle={{ paddingBottom: s.lg }}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.feedHeadRow}>
         <Text style={styles.feedHead}>JUST SCANNED</Text>
         <Pressable onPress={onOpenCollection} hitSlop={8}>
           <Text style={styles.link}>Open collection</Text>
         </Pressable>
       </View>
-      {rows.map((x) => (
-        <View key={x.key} style={styles.feedRow}>
-          <CardImage
-            setId={x.setId} number={x.number} rarity={x.rarity} width={32} radius={3}
-          />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.feedName} numberOfLines={1}>{x.name}</Text>
-            <Text style={styles.feedMeta} numberOfLines={1}>{x.set} · #{x.number}</Text>
+
+      {rows.map((x) => {
+        const isOpen = open === x.key;
+        return (
+          <View key={x.key}>
+            <Pressable
+              onPress={() => setOpen(isOpen ? null : x.key)}
+              style={({ pressed }) => [
+                styles.feedRow, (pressed || isOpen) && styles.feedRowOn,
+              ]}
+            >
+              <CardImage
+                cardId={x.cardId} number={x.number} rarity={x.rarity} width={32} radius={3}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.feedName} numberOfLines={1}>{x.name}</Text>
+                <Text style={styles.feedMeta} numberOfLines={1}>{x.set} · #{x.number}</Text>
+              </View>
+              {x.unsure ? <Badge label="CHECK" tone="warn" /> : null}
+              <Text style={styles.feedPrice}>{money(x.price)}</Text>
+              <ChevronIcon size={13} color={c.faint} dir={isOpen ? 'up' : 'down'} />
+            </Pressable>
+
+            {isOpen ? (
+              <View style={styles.fixWrap}>
+                <Text style={styles.fixLabel}>NOT THIS CARD?</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.fixRow}
+                >
+                  {x.others.map((alt) => (
+                    <Pressable
+                      key={alt.cardId}
+                      onPress={() => {
+                        setKeys((prev) => ({
+                          ...prev, [x.key]: onRedirect(keyFor(x), alt.cardId),
+                        }));
+                        setOpen(null);
+                      }}
+                      style={({ pressed }) => [styles.fixCard, pressed && { opacity: 0.7 }]}
+                    >
+                      <CardImage
+                        cardId={alt.cardId} number={alt.number} rarity={alt.rarity}
+                        width={54} radius={4}
+                      />
+                      <Text style={styles.fixName} numberOfLines={1}>{alt.name}</Text>
+                      <Text style={styles.fixPrice}>{money(alt.price)}</Text>
+                    </Pressable>
+                  ))}
+                  {!x.others.length ? (
+                    <Text style={styles.fixNone}>
+                      Nothing else came close on that read.
+                    </Text>
+                  ) : null}
+                </ScrollView>
+                <Pressable
+                  onPress={() => { onUndo(keyFor(x)); setOpen(null); }}
+                  style={({ pressed }) => [styles.remove, pressed && { opacity: 0.7 }]}
+                >
+                  <TrashIcon size={14} color={c.bad} />
+                  <Text style={styles.removeText}>Not a card — take it back off</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
-          {x.unsure ? <Badge label="CHECK" tone="warn" /> : null}
-          <Text style={styles.feedPrice}>{money(x.price)}</Text>
-        </View>
-      ))}
-    </View>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -265,8 +358,25 @@ const styles = StyleSheet.create({
   feedHead: { ...t.section, color: c.faint },
   feedRow: {
     flexDirection: 'row', alignItems: 'center', gap: s.md, paddingVertical: 7,
+    paddingHorizontal: 6, marginHorizontal: -6, borderRadius: r.sm,
     borderBottomWidth: 1, borderBottomColor: c.lineSoft,
   },
+  feedRowOn: { backgroundColor: c.surface },
+  fixWrap: {
+    backgroundColor: c.surface, borderRadius: r.md, padding: s.md, marginBottom: s.sm,
+    borderWidth: 1, borderColor: c.lineSoft, gap: s.sm,
+  },
+  fixLabel: { ...t.section, color: c.faint },
+  fixRow: { gap: s.md, paddingRight: s.sm },
+  fixCard: { width: 54, gap: 3 },
+  fixName: { ...t.tiny, color: c.dim },
+  fixPrice: { ...t.tiny, color: c.money, fontWeight: '800' },
+  fixNone: { ...t.tiny, color: c.faint, paddingVertical: s.lg },
+  remove: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 9, borderRadius: r.sm, backgroundColor: c.badWash,
+  },
+  removeText: { ...t.tiny, color: c.bad, fontWeight: '800' },
   feedName: { ...t.body, color: c.text },
   feedMeta: { ...t.meta, color: c.dim, marginTop: 1 },
   feedPrice: { ...t.money, color: c.money },

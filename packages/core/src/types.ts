@@ -112,11 +112,27 @@ export interface ScanHit {
     alternatives: Array<{ card: CardRecord; distance: number; topMarket: number | null }>;
     reason: 'reprint-price-gap';
   };
+  /**
+   * The next best answers, whatever their price.
+   *
+   * `ambiguity` is deliberately narrow: it fires only when the rival is close
+   * *and* the money differs, because interrupting a bulk scan has a cost. But a
+   * misread that costs nothing to the total is still a wrong card in someone's
+   * collection, and they can see it is wrong at a glance from the picture.
+   * These are here so the scan feed can offer the second-best without the
+   * engine having to decide first that the mistake was expensive enough.
+   */
+  runnersUp?: Array<{ card: CardRecord; distance: number; topMarket: number | null }>;
 }
 
 export interface ScannerConfig {
   /** Above this Hamming distance the match is discarded as "no card". */
   maxDistance: number;
+  /**
+   * Minimum bits by which the winner must beat the nearest differently-named
+   * card. Zero disables the check.
+   */
+  minNameMargin: number;
   /** Below this margin the top two candidates are treated as interchangeable. */
   ambiguousMargin: number;
   /** Price ratio between candidates that makes an ambiguity worth surfacing. */
@@ -172,6 +188,29 @@ export const DEFAULT_CONFIG: ScannerConfig = {
   // as its 60c reprint). Expensive confusions are caught by ambiguousMargin and
   // handed to the user instead.
   maxDistance: 240,
+  /*
+   * How far the winner must beat the first rival that is a different card.
+   *
+   * The gate above is necessary and nowhere near sufficient: it was swept on
+   * frames rendered from the reference images, and a real lens pointed at a
+   * bare table answers inside it - a device build logged twelve cards off an
+   * empty desk, most of them basic energies, which are the flattest rows in the
+   * index and so the ones a flat surface resembles.
+   *
+   * Swept against both suites at gate 240:
+   *
+   *    0   94/100 priced   2 empty surfaces accepted
+   *   16   93/100 priced   1 empty surface accepted
+   *   24   93/100 priced   0
+   *   40   93/100 priced   0
+   *   60   92/100 priced   0
+   *
+   * Everything from 24 to 40 costs the same one card in a hundred, so this
+   * takes the widest of them: 40 is two and a half times the best margin any
+   * empty surface managed, which is headroom for a device whose noise floor is
+   * higher than a rendered frame's. See Scanner.nameMargin.
+   */
+  minNameMargin: 40,
   // Swept on 180 frames of cards that share artwork across sets with a >=2x
   // price gap - the only cases where picking the wrong printing costs anything:
   //

@@ -57,6 +57,15 @@ const REUSE_MAX_FRAMES = 12;
 const STRIP_DECISIVE = 6;
 
 /**
+ * How deep to look for a rival with a different name.
+ *
+ * Sixteen covers the largest reprint families - a basic energy runs to about a
+ * dozen printings - and the index's scan cost is the same whatever K is, since
+ * every row is compared either way; only the small heap grows.
+ */
+const NAME_MARGIN_K = 16;
+
+/**
  * How far behind the winner a rival printing can be and still be worth putting
  * to the footer. Wider than the margin that prompts the user, because a wrong
  * printing that wins clearly is exactly the case the picture cannot fix.
@@ -95,6 +104,14 @@ export interface FrameResult {
   /** The current best guess, even before confirmation, for live feedback. */
   preview: { card: CardRecord; distance: number } | null;
   timings: { detect: number; describe: number; search: number; total: number; reused: number };
+  /**
+   * Bits by which the winner beat the nearest differently-named card.
+   *
+   * Reported so the number that decides acceptance can be read off a real
+   * device rather than inferred from frames rendered on a desktop - which is
+   * how the distance gate came to be set where an empty table passes it.
+   */
+  nameMargin?: number;
   /** Per-section disagreement for the winning read, for on-device diagnosis. */
   sections?: Array<{ name: string; d: number; of: number }>;
 }
@@ -140,6 +157,8 @@ export class Scanner {
   private lastDetection: Detection | null = null;
   private lastResult: MatchResult | null = null;
   private lastQuery: Uint8Array | null = null;
+  /** The margin of the last accepted read, for frames that reuse it. */
+  private lastNameMargin = 0;
   /** Footer of the last recognised card, kept only when it was a near-tie. */
   private lastStrip: Uint8Array | null = null;
   /** Consecutive frames answered from `lastResult` without recognising again. */
@@ -194,6 +213,7 @@ export class Scanner {
     this.lastDetection = null;
     this.lastResult = null;
     this.lastQuery = null;
+    this.lastNameMargin = 0;
     this.lastStrip = null;
     this.reusedRun = 0;
     this.streakBest = null;
@@ -262,7 +282,11 @@ export class Scanner {
       this.lastDetection = detection;
       timings.total = timings.detect;
       timings.reused = 1;
-      return this.track(detection, this.lastResult, this.lastQuery!, timings);
+      // A reused frame inherits the margin of the read it is reusing, which
+      // is the read that passed the gate in the first place.
+      return this.track(
+        detection, this.lastResult, this.lastQuery!, timings, this.lastNameMargin,
+      );
     }
 
     /**
@@ -343,12 +367,17 @@ export class Scanner {
     }
     timings.total = timings.detect + timings.describe + timings.search;
 
-    if (result.best.index < 0 || result.best.distance > this.config.maxDistance) {
+    const margin = result.best.index < 0 ? 0 : this.nameMargin(query);
+    if (
+      result.best.index < 0
+      || result.best.distance > this.config.maxDistance
+      || margin < this.config.minNameMargin
+    ) {
       this.streak = 0;
       this.streakIndex = -1;
       this.lastDetection = null;
       this.lastResult = null;
-      return { detection, hit: null, preview: null, timings };
+      return { detection, hit: null, preview: null, timings, nameMargin: margin };
     }
 
     // Always read the footer of an accepted card. It covers 36 rows against the
@@ -365,7 +394,54 @@ export class Scanner {
     this.lastDetection = detection;
     this.lastResult = result;
     this.lastQuery = query;
-    return this.track(detection, result, query, timings);
+    this.lastNameMargin = margin;
+    return this.track(detection, result, query, timings, margin);
+  }
+
+  /**
+   * How far the winner is ahead of the first rival that is a *different card*.
+   *
+   * This is what tells "there is no card here" apart from "there is a card and
+   * its printing is genuinely hard to pin down", and nothing else does.
+   *
+   * Distance alone cannot. The gate was set at 240 from frames rendered off the
+   * reference images, where a correct read sits at 37; through a real lens a
+   * correct read sits far higher, and so does an empty desk - a device build
+   * pointed at a bare table answered at 232 on every one of 216 frames and
+   * logged twelve cards that were never there.
+   *
+   * A plain margin to the runner-up cannot either. An empty desk ties with its
+   * runner-up because nothing in a featureless surface prefers one of 20,444
+   * rows over another - but a Basic Lightning Energy also ties with its runner
+   * up, because that runner-up is the same card printed in another set and the
+   * two really are near-identical. Refusing both would leave the app unable to
+   * count energies, which is a good part of what bulk is.
+   *
+   * So reprints of the winner are skipped and the margin is measured to the
+   * first genuinely different card. Measured over 100 frames and six surfaces
+   * with no card in them:
+   *
+   *   margin >= 20   4 of 100 cards refused, 0 of 6 surfaces accepted
+   *
+   * and three of those four refusals were reads that had been *wrong*. The
+   * surfaces never managed better than 16, while the cards' 10th percentile is
+   * 70, so the threshold sits in a wide empty band rather than on a cliff.
+   *
+   * The band is why this is worth doing at all: distance had no such band left.
+   */
+  private nameMargin(query: Uint8Array): number {
+    if (this.config.minNameMargin <= 0) return Number.POSITIVE_INFINITY;
+    const top = this.index.topK(query, NAME_MARGIN_K);
+    if (top.length < 2) return Number.POSITIVE_INFINITY;
+    const winner = this.cards[top[0].index]?.n;
+    for (let i = 1; i < top.length; i++) {
+      if (this.cards[top[i].index]?.n === winner) continue;
+      return top[i].distance - top[0].distance;
+    }
+    // Every one of the K is the same card under different set symbols. That is
+    // a reprint family, not an empty table: accept, and let the footer and the
+    // ambiguity prompt settle which printing it is.
+    return Number.POSITIVE_INFINITY;
   }
 
   /**
@@ -380,6 +456,7 @@ export class Scanner {
     result: MatchResult,
     query: Uint8Array,
     timings: FrameResult['timings'],
+    nameMargin: number,
   ): FrameResult {
     const preview = { card: this.cards[result.best.index], distance: result.best.distance };
     const sections =
@@ -447,7 +524,7 @@ export class Scanner {
       this.streakIndex !== this.emittedIndex &&
       this.frameNo - lastSeen >= cooldown;
     if (!confirmed) {
-      return { detection, hit: null, preview, timings, sections };
+      return { detection, hit: null, preview, timings, sections, nameMargin };
     }
 
     this.emittedIndex = this.streakIndex;
@@ -471,6 +548,7 @@ export class Scanner {
       preview,
       timings,
       sections,
+      nameMargin,
     };
   }
 
@@ -504,6 +582,9 @@ export class Scanner {
       }
     }
     if (result.best.index < 0 || result.best.distance > this.config.maxDistance) return null;
+    // A still image gets the same protection as the live loop: a photo of a
+    // table must not come back as a card either.
+    if (this.nameMargin(query) < this.config.minNameMargin) return null;
     const strip = this.index.hasStrips ? describeStrip(canonical) : null;
     return this.buildHit(result, query, strip);
   }
@@ -574,6 +655,27 @@ export class Scanner {
       variants,
       topMarket,
     };
+
+    /*
+     * The next best answers, for the user rather than for the engine.
+     *
+     * `near` above is only filled when the winner's margin is inside the footer
+     * band, because that is when the engine has a decision to make. The feed's
+     * "not this one" needs candidates on every hit, so this asks for its own
+     * shortlist - which costs nothing, the scan over every row having already
+     * happened; only the small heap is larger.
+     */
+    hit.runnersUp = this.index
+      .topK(query, 4)
+      .filter((c) => c.index !== winner)
+      .map((c) => {
+        const alt = this.cards[c.index];
+        return {
+          card: alt,
+          distance: c.distance,
+          topMarket: topMarketOf(variantsOf(this.book.prices[alt.i])),
+        };
+      });
 
     // Only ask the user about a printing the footer could not settle, and only
     // when getting it wrong would actually cost them money.

@@ -65,6 +65,12 @@ const SUITE = [
     make: 'python tools/export_scan_fixtures.py',
   },
   {
+    // No fixtures: the surfaces are generated, so this runs everywhere.
+    name: 'nocard',
+    needs: ['scan_frames.bin', 'scan_meta.json'],
+    make: 'python tools/make_scan_fixtures.py',
+  },
+  {
     name: 'sequence',
     needs: ['scan_frames.bin'],
     make: 'python tools/export_scan_fixtures.py',

@@ -241,7 +241,7 @@ function Tile({
     <View style={{ width }}>
       <View style={{ height: cardHeight(width) }}>
         <CardImage
-          setId={card.s} number={card.u} rarity={card.r} width={width} radius={r.md}
+          cardId={card.i} number={card.u} rarity={card.r} width={width} radius={r.md}
         />
         <Pressable
           onPress={onWish}
