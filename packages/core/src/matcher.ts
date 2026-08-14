@@ -184,6 +184,32 @@ export class CardIndex {
    * Guessing between those from a single number wasted several device builds.
    */
   /** One bit of one index row, MSB-first, as the descriptor packs them. */
+  /**
+   * One row's descriptor, as a query would arrive.
+   *
+   * The cleanest possible read of a card - no lens, no blur, no perspective -
+   * which makes it the upper bound on how well that card can ever score. Used
+   * by the diagnostics that ask whether an acceptance rule has made some card
+   * impossible to scan at all.
+   */
+  rowBytes(row: number): Uint8Array {
+    // The words are a view over the original bytes, so unpacking them has to
+    // use the same byte order the platform put them in - little-endian on
+    // everything this runs on. Getting this backwards produces a descriptor
+    // that is not any card, which self-searches to a stranger at distance 302.
+    const out = new Uint8Array(this.bytesPerRow);
+    const base = row * this.wordsPerRow;
+    for (let w = 0; w < this.wordsPerRow; w++) {
+      const v = this.words[base + w];
+      const o = w * 4;
+      out[o] = v & 0xff;
+      out[o + 1] = (v >>> 8) & 0xff;
+      out[o + 2] = (v >>> 16) & 0xff;
+      out[o + 3] = (v >>> 24) & 0xff;
+    }
+    return out;
+  }
+
   bitAt(row: number, bit: number): number {
     const bytes = new Uint8Array(this.words.buffer);
     return (bytes[row * this.bytesPerRow + (bit >> 3)] >> (7 - (bit & 7))) & 1;

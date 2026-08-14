@@ -126,14 +126,27 @@ const CORNERS = [
  * worth so far; the collection tab is where any of it gets examined.
  */
 export function ScanSummary({
-  value, count, scanning, onToggle,
-}: { value: number; count: number; scanning: boolean; onToggle: () => void }) {
+  value, count, scanning, onToggle, onReset,
+}: {
+  value: number; count: number; scanning: boolean;
+  onToggle: () => void;
+  /** Start the tally again. Deliberately a hold, not a tap. */
+  onReset: () => void;
+}) {
   return (
     <View style={styles.summary}>
-      <View style={{ flex: 1 }}>
+      {/*
+        Resetting is a long press rather than a button.
+        The session used to reset itself whenever you left the tab, which meant
+        the totals you were watching vanished if you so much as looked at your
+        collection. Now it runs until you say otherwise - and saying otherwise
+        needs to be deliberate, because it is not undoable.
+      */}
+      <Pressable onLongPress={onReset} delayLongPress={600} style={{ flex: 1 }}>
         <Text style={styles.label}>THIS SESSION</Text>
         <Text style={styles.total}>{money(value)}</Text>
-      </View>
+        <Text style={styles.resetHint}>hold to start over</Text>
+      </Pressable>
       <View style={styles.countCol}>
         <Text style={styles.label}>CARDS</Text>
         <Text style={styles.count}>{count}</Text>
@@ -330,6 +343,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: c.lineSoft,
   },
   label: { ...t.section, color: c.faint },
+  resetHint: { ...t.tiny, fontSize: 9.5, color: c.faint, opacity: 0.7, marginTop: 1 },
   total: {
     fontSize: 26, fontWeight: '800', color: c.money, letterSpacing: -0.6,
     fontVariant: ['tabular-nums'], marginTop: 2,

@@ -65,6 +65,11 @@ const SUITE = [
     make: 'python tools/export_scan_fixtures.py',
   },
   {
+    // No fixtures at all: the queries are the index's own rows.
+    name: 'reachable',
+    needs: [],
+  },
+  {
     // No fixtures: the surfaces are generated, so this runs everywhere.
     name: 'nocard',
     needs: ['scan_frames.bin', 'scan_meta.json'],
@@ -88,7 +93,7 @@ const SUITE = [
   { name: 'history', dir: mobileTestDir, needs: [] },
   { name: 'workimage', dir: mobileTestDir, needs: [] },
   { name: 'worklet-payload', dir: mobileTestDir, needs: [] },
-  { name: 'arturl', dir: mobileTestDir, needs: [] },
+  { name: 'thumbs', dir: mobileTestDir, needs: [] },
 ];
 
 let failed = 0;

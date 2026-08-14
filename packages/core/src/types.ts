@@ -191,26 +191,37 @@ export const DEFAULT_CONFIG: ScannerConfig = {
   /*
    * How far the winner must beat the first rival that is a different card.
    *
-   * The gate above is necessary and nowhere near sufficient: it was swept on
-   * frames rendered from the reference images, and a real lens pointed at a
-   * bare table answers inside it - a device build logged twelve cards off an
-   * empty desk, most of them basic energies, which are the flattest rows in the
-   * index and so the ones a flat surface resembles.
+   * The distance gate above is necessary and nowhere near sufficient: it was
+   * swept on frames rendered from the reference images, and a real lens pointed
+   * at a bare table answers inside it - a device build logged twelve cards off
+   * an empty desk, most of them basic energies, which are the flattest rows in
+   * the index and so the ones a flat surface resembles.
    *
-   * Swept against both suites at gate 240:
+   * This was set to 40 on the strength of two suites that both said 24, 32 and
+   * 40 cost the same, so it took the widest for headroom. That was reasoning
+   * about the wrong population. Feeding every card's own index row back as a
+   * query - a read with no lens, blur or perspective in it, so the best that
+   * card can ever score - says which cards a threshold makes *impossible*:
    *
-   *    0   94/100 priced   2 empty surfaces accepted
-   *   16   93/100 priced   1 empty surface accepted
-   *   24   93/100 priced   0
-   *   40   93/100 priced   0
-   *   60   92/100 priced   0
+   *          unreachable cards        the worst basic energy
+   *    12          8 (0.04%)                 37
+   *    24         12 (0.06%)                 37
+   *    40         20 (0.10%)                 37
+   *    60         70 (0.34%)                 37
    *
-   * Everything from 24 to 40 costs the same one card in a hundred, so this
-   * takes the widest of them: 40 is two and a half times the best margin any
-   * empty surface managed, which is headroom for a device whose noise floor is
-   * higher than a rendered frame's. See Scanner.nameMargin.
+   * Basic Fire and Basic Fighting Energy peak at 37. At 40 they could not be
+   * scanned by anything, ever, and a device build duly failed to read an energy
+   * card at all - while ordinary cards peak at a median of 184.
+   *
+   * 24 is one and a half times the best margin any empty surface managed (16)
+   * and well under the worst real card, which is where a threshold belongs. The
+   * eight cards below it are pairs whose index rows are byte-identical - a
+   * data defect no threshold can help with.
+   *
+   * What carries the weight now is temporal: one card per presentation, and
+   * `confirmFrames` agreeing reads before any of them counts.
    */
-  minNameMargin: 40,
+  minNameMargin: 24,
   // Swept on 180 frames of cards that share artwork across sets with a >=2x
   // price gap - the only cases where picking the wrong printing costs anything:
   //
@@ -223,7 +234,16 @@ export const DEFAULT_CONFIG: ScannerConfig = {
   // the next one buys ten cents, so this stops at 40.
   ambiguousMargin: 40,
   ambiguousPriceRatio: 1.6,
-  confirmFrames: 2,
+  /*
+   * Three rather than two.
+   *
+   * A blurred or half-lifted frame reads as some other card entirely, and with
+   * two frames one flicker was enough to commit it. Three is a tenth of a
+   * second at 30 fps - imperceptible when passing cards by hand - and the
+   * commit takes the sharpest read of the run, so a longer run is a better
+   * read as well as a safer one.
+   */
+  confirmFrames: 3,
   clearFrames: 6,
   // ~1 second at 30 fps: long enough that detection flicker inside one pass
   // cannot double-count, short enough that deliberately feeding a second copy

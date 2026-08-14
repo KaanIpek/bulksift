@@ -66,6 +66,17 @@ const STRIP_DECISIVE = 6;
 const NAME_MARGIN_K = 16;
 
 /**
+ * A card's name without the parenthetical the catalogue uses to separate
+ * printings of it: "Professor's Research (Professor Sada)" -> "Professor's
+ * Research". Two rows sharing this are the same card in different clothes, and
+ * must not count as rivals when deciding whether a card is there at all.
+ */
+export const baseName = (name: string): string => {
+  const at = name.indexOf(' (');
+  return at > 0 ? name.slice(0, at) : name;
+};
+
+/**
  * How far behind the winner a rival printing can be and still be worth putting
  * to the footer. Wider than the margin that prompts the user, because a wrong
  * printing that wins clearly is exactly the case the picture cannot fix.
@@ -131,12 +142,37 @@ function topMarketOf(variants: PricedVariant[]): number | null {
 export class Scanner {
   private readonly index: CardIndex;
   private readonly cards: CardRecord[];
+  /**
+   * Card names with any trailing parenthetical removed, one per row.
+   *
+   * The catalogue uses that parenthetical to tell apart printings of the SAME
+   * card that carry different subtitle art - "Professor's Research (Professor
+   * Sada)" against "(Professor Turo)". Compared literally they are different
+   * cards, so the acceptance rule measured its margin between two printings of
+   * one card and found 10 bits, making both unscannable. Normalised, the worst
+   * card in the catalogue sits at 33.
+   *
+   * Computed once. It is read up to sixteen times a frame.
+   */
+  private readonly baseNames: string[];
   private readonly book: PriceBook;
   private readonly config: ScannerConfig;
 
   private streak = 0;
   private streakIndex = -1;
   private emittedIndex = -1;
+  /**
+   * Every row emitted since reads last went quiet.
+   *
+   * `emittedIndex` remembers only the most recent one, which is what let a
+   * single card be logged four or five times: it lay under the lens, a blurred
+   * frame in between read as something else and moved `emittedIndex` off it,
+   * and the card was free to be counted again. Remembering the whole
+   * presentation closes that without the blunter rule of one card per
+   * presentation, which the 25-card fixture stream showed refuses 24 of them -
+   * a stream of cards passed by hand never goes quiet between two of them.
+   */
+  private emittedThisPass = new Set<number>();
   private missFrames = 0;
   private frameNo = 0;
   private lastEmitFrame = new Map<number, number>();
@@ -187,6 +223,7 @@ export class Scanner {
     this.cards = cards;
     this.book = book;
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.baseNames = cards.map((c) => baseName(c.n));
   }
 
   get priceUpdated(): string {
@@ -207,6 +244,7 @@ export class Scanner {
     this.streak = 0;
     this.streakIndex = -1;
     this.emittedIndex = -1;
+    this.emittedThisPass.clear();
     this.missFrames = 0;
     this.frameNo = 0;
     this.preferFlipped = false;
@@ -255,17 +293,10 @@ export class Scanner {
     timings.detect = performance.now() - tDetect;
 
     if (!detection) {
-      this.missFrames++;
-      if (this.missFrames >= this.config.clearFrames) {
-        this.streak = 0;
-        this.streakIndex = -1;
-        this.emittedIndex = -1;
-        this.streakBest = null;
-      }
+      this.endOfPresentation();
       timings.total = performance.now() - tDetect;
       return { detection: null, hit: null, preview: null, timings };
     }
-    this.missFrames = 0;
 
     // A card sitting in front of a fixed lens is recognised once, then looked
     // at for another twenty frames that can only reach the same answer. When
@@ -373,12 +404,24 @@ export class Scanner {
       || result.best.distance > this.config.maxDistance
       || margin < this.config.minNameMargin
     ) {
+      /*
+       * A refused frame counts towards the card having gone.
+       *
+       * It used to be the detector's job to say when the frame was empty, and
+       * the detector is not able to: pointed at a bedsheet it found a quad in
+       * 3,297 of 3,421 frames. So "the card has left" never fired, one card
+       * stayed one presentation for as long as it lay there, and a single card
+       * was logged four or five times.
+       */
       this.streak = 0;
       this.streakIndex = -1;
       this.lastDetection = null;
       this.lastResult = null;
+      this.missFrames++;
+      if (this.missFrames >= this.config.clearFrames) this.endOfPresentation();
       return { detection, hit: null, preview: null, timings, nameMargin: margin };
     }
+    this.missFrames = 0;
 
     // Always read the footer of an accepted card. It covers 36 rows against the
     // descriptor's 336, so it costs about a tenth of a describe - far too little
@@ -396,6 +439,21 @@ export class Scanner {
     this.lastQuery = query;
     this.lastNameMargin = margin;
     return this.track(detection, result, query, timings, margin);
+  }
+
+  /**
+   * The card has gone: forget what was emitted, so the next one may be.
+   *
+   * Called when reads stop landing, from either cause - no quad at all, or a
+   * run of quads that nothing believable could be read from.
+   */
+  private endOfPresentation(): void {
+    this.streak = 0;
+    this.streakIndex = -1;
+    this.emittedIndex = -1;
+    this.emittedThisPass.clear();
+    this.streakBest = null;
+    this.missFrames = 0;
   }
 
   /**
@@ -433,9 +491,9 @@ export class Scanner {
     if (this.config.minNameMargin <= 0) return Number.POSITIVE_INFINITY;
     const top = this.index.topK(query, NAME_MARGIN_K);
     if (top.length < 2) return Number.POSITIVE_INFINITY;
-    const winner = this.cards[top[0].index]?.n;
+    const winner = this.baseNames[top[0].index];
     for (let i = 1; i < top.length; i++) {
-      if (this.cards[top[i].index]?.n === winner) continue;
+      if (this.baseNames[top[i].index] === winner) continue;
       return top[i].distance - top[0].distance;
     }
     // Every one of the K is the same card under different set symbols. That is
@@ -519,15 +577,34 @@ export class Scanner {
       this.lastEmitFrame.get(result.best.index) ?? -Infinity,
       rivalIndex >= 0 ? (this.lastEmitFrame.get(rivalIndex) ?? -Infinity) : -Infinity,
     );
+    /*
+     * One card per presentation, not one card per row.
+     *
+     * `streakIndex !== emittedIndex` only remembers the *last* card emitted, so
+     * a single card lying under the lens was logged again every time a blurred
+     * frame in between read as something else and moved `emittedIndex` off it.
+     * With a card held for five seconds and the odd misread, that is four or
+     * five copies of one card - which is what a device build did.
+     *
+     * A pass of the hand puts one card under the camera. So: nothing has been
+     * emitted since the last time reads went quiet, or nothing is emitted.
+     * Two genuinely separate copies are still counted twice; they just have to
+     * be separated by the moment of lifting one and laying the next, which is
+     * about a third of a second and unavoidable.
+     */
     const confirmed =
       this.streak >= this.config.confirmFrames &&
-      this.streakIndex !== this.emittedIndex &&
+      !this.emittedThisPass.has(this.streakIndex) &&
+      !this.emittedThisPass.has(result.best.index) &&
       this.frameNo - lastSeen >= cooldown;
     if (!confirmed) {
       return { detection, hit: null, preview, timings, sections, nameMargin };
     }
 
     this.emittedIndex = this.streakIndex;
+    this.emittedThisPass.add(this.streakIndex);
+    this.emittedThisPass.add(result.best.index);
+    if (rivalIndex >= 0) this.emittedThisPass.add(rivalIndex);
     this.lastEmitFrame.set(this.streakIndex, this.frameNo);
     this.lastEmitFrame.set(result.best.index, this.frameNo);
     if (rivalIndex >= 0) this.lastEmitFrame.set(rivalIndex, this.frameNo);

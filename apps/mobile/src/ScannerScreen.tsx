@@ -106,6 +106,9 @@ export default function ScannerScreen({
   onOpenCollection,
   onUndo,
   onRedirect,
+  recent,
+  onRecent,
+  onResetSession,
 }: {
   engine: LoadedEngine;
   onHit: (hit: ScanHit) => string;
@@ -114,6 +117,15 @@ export default function ScannerScreen({
   onOpenCollection: () => void;
   onUndo: (entryKey: string) => void;
   onRedirect: (entryKey: string, cardId: string) => string;
+  /**
+   * The just-scanned list, owned by the app rather than by this screen.
+   *
+   * This component is unmounted whenever another tab is on top, so holding it
+   * here meant the feed's own "Open collection" link threw away every undo.
+   */
+  recent: ScannedRow[];
+  onRecent: (next: (prev: ScannedRow[]) => ScannedRow[]) => void;
+  onResetSession: () => void;
 }) {
   const { hasPermission, requestPermission } = useCameraPermission();
   // Prefer the rear camera, but fall back to whatever exists. Asking for 'back'
@@ -154,7 +166,6 @@ export default function ScannerScreen({
    * in", and answering it here keeps the collection tab from having to be the
    * scanning UI as well.
    */
-  const [recent, setRecent] = useState<ScannedRow[]>([]);
 
   const engineRef = useRef<LoadedEngine | null>(null);
   const lastTickRef = useRef(0);
@@ -329,7 +340,7 @@ export default function ScannerScreen({
         // can undo or redirect itself without searching the collection for a
         // card that may since have been merged into an existing pile.
         const entryKey = onHit(hit);
-        setRecent((prev) => [
+        onRecent((prev) => [
           {
             key: `${hit.card.i}-${seqRef.current++}`,
             entryKey,
@@ -508,6 +519,7 @@ export default function ScannerScreen({
         value={sessionValue}
         count={sessionCount}
         scanning={scanning}
+        onReset={onResetSession}
         onToggle={() => {
           const next = !scanning;
           setScanning(next);

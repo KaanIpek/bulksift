@@ -44,7 +44,7 @@ import {
   CollectionIcon, ScanIcon, SearchIcon, SetsIcon, type IconProps,
 } from './src/ui/icons';
 import {
-  ScanFeed, ScanOverlay, ScanSummary, ScanViewport,
+  ScanFeed, ScanOverlay, ScanSummary, ScanViewport, type ScannedRow,
 } from './src/ui/ScanChrome';
 import { c, r, s, shadow, t } from './src/ui/theme';
 
@@ -71,8 +71,34 @@ export default function App() {
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [setFilter, setSetFilter] = useState<string | null>(null);
 
-  /** When the current scanning session began; entries newer than this count. */
-  const sessionStart = useRef(Date.now());
+  /**
+   * What this scanning session has actually put in, counted as it happens.
+   *
+   * It used to be derived: every entry whose `updatedAt` had moved since the
+   * session began, summed by quantity. But `addScan` stamps `updatedAt` on the
+   * pile it increments while the quantity stays the running total, so scanning
+   * a thirteenth copy of a card you already owned made the two biggest numbers
+   * on the scan screen read thirteen cards. Sifting a second box of a set you
+   * have touched before - the normal case - made both figures arbitrary.
+   *
+   * Undo and redirect made it worse rather than better: both route through
+   * `setQuantity`, which also stamps `updatedAt`, so undoing a scan left the
+   * whole pre-existing pile counted and correcting a misread counted both
+   * piles. The one place a mistake could be fixed inflated the number above it.
+   *
+   * A ledger has none of that: one card in, one card out, and it says only what
+   * it was told.
+   */
+  const [session, setSession] = useState({ count: 0, value: 0 });
+
+  /**
+   * The last few cards, held here rather than in the scanner.
+   *
+   * ScannerScreen is unmounted whenever another tab is on top, so keeping this
+   * inside it meant the feed's own "Open collection" link destroyed every undo
+   * the user might have wanted to reach.
+   */
+  const [recent, setRecent] = useState<ScannedRow[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +167,9 @@ export default function App() {
     setEntries((prev) =>
       addScan(prev, hit.card, pick.name, pick.price, 'NM', !!hit.ambiguity),
     );
+    // Outside the updater: React may re-invoke one, and a double-counted
+    // session is precisely the drifting total this replaced.
+    setSession((s) => ({ count: s.count + 1, value: s.value + (pick.price ?? 0) }));
     return entryKey(hit.card.i, pick.name, 'NM');
   }, [engine]);
 
@@ -149,8 +178,13 @@ export default function App() {
     setEntries((prev) => {
       const found = prev.find((e) => e.key === key);
       if (!found) return prev;
+      setSession((s) => ({
+        count: Math.max(0, s.count - 1),
+        value: Math.max(0, s.value - (found.unitPrice ?? 0)),
+      }));
       return setQuantity(prev, key, found.quantity - 1);
     });
+    setRecent((prev) => prev.filter((r) => r.entryKey !== key));
   }, []);
 
   /**
@@ -162,11 +196,15 @@ export default function App() {
     if (!card) return key;
     const variants = engine!.scanner.pricesFor(cardId);
     const pick = defaultVariant(variants);
+    const was = entries.find((e) => e.key === key)?.unitPrice ?? 0;
     setEntries((prev) => {
       const found = prev.find((e) => e.key === key);
       const without = found ? setQuantity(prev, key, found.quantity - 1) : prev;
       return addScan(without, card, pick.name, pick.price, 'NM', false);
     });
+    // The card count is unchanged - one card was scanned and it is still one
+    // card. Only what it is worth moves.
+    setSession((s) => ({ ...s, value: Math.max(0, s.value + (pick.price ?? 0) - (was ?? 0)) }));
     return entryKey(cardId, pick.name, 'NM');
   }, [engine]);
 
@@ -211,10 +249,7 @@ export default function App() {
 
   const ownedIds = useMemo(() => new Set(entries.map((e) => e.cardId)), [entries]);
   const wishedIds = useMemo(() => new Set(wishlist.map((w) => w.cardId)), [wishlist]);
-  const sessionEntries = useMemo(
-    () => entries.filter((e) => e.updatedAt >= sessionStart.current),
-    [entries],
-  );
+
 
   if (bootError) {
     return (
@@ -252,18 +287,22 @@ export default function App() {
             <ScannerScreen
               engine={engine}
               onHit={onHit}
-              sessionCount={sessionEntries.reduce((n, e) => n + e.quantity, 0)}
-              sessionValue={sessionEntries.reduce((v, e) => v + entryValue(e), 0)}
+              sessionCount={session.count}
+              sessionValue={session.value}
+              recent={recent}
+              onRecent={setRecent}
+              onResetSession={() => { setSession({ count: 0, value: 0 }); setRecent([]); }}
               onOpenCollection={() => setTab('collection')}
               onUndo={undoScan}
               onRedirect={redirectScan}
             />
           ) : (
             <ScanPreview
-              sessionCount={sessionEntries.reduce((n, e) => n + e.quantity, 0)}
-              sessionValue={sessionEntries.reduce((v, e) => v + entryValue(e), 0)}
+              sessionCount={session.count}
+              sessionValue={session.value}
               recent={entries.slice(0, 4)}
               onOpenCollection={() => setTab('collection')}
+              onResetSession={() => { setSession({ count: 0, value: 0 }); setRecent([]); }}
             />
           )
         ) : null}
@@ -313,8 +352,7 @@ export default function App() {
               key={x.id}
               style={({ pressed }) => [styles.tab, pressed && { opacity: 0.6 }]}
               onPress={() => {
-                if (x.id === 'scan' && tab !== 'scan') sessionStart.current = Date.now();
-                if (x.id === 'browse' && tab !== 'browse') setSetFilter(null);
+                  if (x.id === 'browse' && tab !== 'browse') setSetFilter(null);
                 setTab(x.id);
               }}
             >
@@ -359,12 +397,13 @@ export default function App() {
  * It never ships: `ScannerScreen` is null only on web.
  */
 function ScanPreview({
-  sessionCount, sessionValue, recent, onOpenCollection,
+  sessionCount, sessionValue, recent, onOpenCollection, onResetSession,
 }: {
   sessionCount: number;
   sessionValue: number;
   recent: Entry[];
   onOpenCollection: () => void;
+  onResetSession: () => void;
 }) {
   const [scanning, setScanning] = useState(true);
   const rows = recent.map((e, i) => ({
@@ -405,6 +444,7 @@ function ScanPreview({
         count={sessionCount}
         scanning={scanning}
         onToggle={() => setScanning((v) => !v)}
+        onReset={onResetSession}
       />
       <ScanFeed
         rows={rows}
