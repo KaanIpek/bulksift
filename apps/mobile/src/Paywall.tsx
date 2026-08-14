@@ -61,6 +61,8 @@ export default function Paywall({
   onSubscribe,
   onRestore,
   busy,
+  storeReady = false,
+  adsReady = false,
 }: {
   reason: PaywallReason | null;
   entitlement: Entitlement;
@@ -72,6 +74,15 @@ export default function Paywall({
   onRestore: () => void;
   /** A purchase or an ad is in flight; every action is disabled meanwhile. */
   busy?: boolean;
+  /**
+   * Whether the store and the ad network are actually connected.
+   *
+   * A paywall whose buttons do nothing is worse than one that says why. This
+   * is the difference between "we are not finished" and "it is broken", and
+   * only one of those is honest.
+   */
+  storeReady?: boolean;
+  adsReady?: boolean;
 }) {
   if (!reason) return null;
   const head = HEADLINE[reason];
@@ -128,9 +139,9 @@ export default function Paywall({
                   : 'You have watched today’s videos. They come back tomorrow.'}
               </Text>
               <Button
-                label={`Watch for ${LIMITS.perAd} scans`}
+                label={adsReady ? `Watch for ${LIMITS.perAd} scans` : 'Not available yet'}
                 onPress={onWatchAd}
-                disabled={busy || adsLeft <= 0 || entitlement.pro}
+                disabled={busy || !adsReady || adsLeft <= 0 || entitlement.pro}
                 icon={<ScanIcon size={15} color={c.text} />}
               />
             </View>
@@ -145,7 +156,11 @@ export default function Paywall({
               <Text style={styles.optionSub}>
                 A one-off purchase. No subscription, and the scans never expire.
               </Text>
-              <Button label="See packs" onPress={onBuyCredits} disabled={busy} />
+              <Button
+                label={storeReady ? 'See packs' : 'Not available yet'}
+                onPress={onBuyCredits}
+                disabled={busy || !storeReady}
+              />
             </View>
           ) : null}
 
@@ -162,11 +177,20 @@ export default function Paywall({
               </View>
             ))}
             <Button
-              label={entitlement.pro ? 'You have Pro' : 'Go Pro'}
+              label={
+                entitlement.pro ? 'You have Pro'
+                  : storeReady ? 'Go Pro' : 'Not available yet'
+              }
               kind="primary"
               onPress={onSubscribe}
-              disabled={busy || entitlement.pro}
+              disabled={busy || entitlement.pro || !storeReady}
             />
+            {!storeReady && !entitlement.pro ? (
+              <Text style={styles.pending}>
+                Purchases are not connected in this build. Everything you have
+                scanned is yours and stays on this phone either way.
+              </Text>
+            ) : null}
           </View>
 
           <Pressable onPress={onRestore} disabled={busy} style={styles.restore}>
@@ -229,6 +253,7 @@ const styles = StyleSheet.create({
   point: { flexDirection: 'row', alignItems: 'center', gap: s.sm },
   pointText: { ...t.meta, color: c.text },
 
+  pending: { ...t.tiny, color: c.faint, textAlign: 'center', lineHeight: 15 },
   restore: { paddingVertical: s.md, alignItems: 'center' },
   restoreText: { ...t.meta, color: c.dim },
   note: {

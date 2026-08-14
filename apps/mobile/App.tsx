@@ -458,6 +458,8 @@ export default function App() {
         reason={paywall}
         entitlement={ent}
         onClose={() => setPaywall(null)}
+        storeReady={storeState() === 'ready'}
+        adsReady={adsAvailable()}
         onWatchAd={() => {
           if (!adsAvailable()) return;
           void showRewardedAd().then((earned) => { if (earned) setEnt(grantAd); });

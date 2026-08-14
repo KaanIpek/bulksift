@@ -63,14 +63,38 @@ export interface Limits {
 }
 
 /**
- * 30 a day is the number a curious person can finish a small stack with, and
- * not the number someone sorting a 5,000-card box can live on - which is the
- * line the paid tier is meant to sit on. Five ads a day at 25 scans each is
- * another 125, so a patient user is never *stuck*, only slowed.
+ * What the free plan gives, measured against what this category actually does.
+ *
+ * Checked 2026-08-14, from the vendors' own pricing pages:
+ *
+ *   Collectr    free: UNLIMITED scanning, unlimited portfolios.
+ *               Pro $4.99/mo or $59.99/yr gates 5+ years of price history,
+ *               export, filters and cosmetics.
+ *   Ludex       free: 60 saved cards, full stop.
+ *               Lite $4.99/mo or $44.99/yr: unlimited in ONE category and
+ *               200 identified scans a month across the others.
+ *               Standard $9.99/mo. Pro $24.99/mo.
+ *   HoloDex     Pro gates unlimited scans, AI grading, the Performance tab
+ *               and the Max chart range. Price is not published on the web.
+ *
+ * So metering scans is normal here - two of the three do it - and $4.99/mo is
+ * the anchor. 30 a day is roughly 900 a month, which is four and a half times
+ * Ludex's Lite allowance and far above their free tier, while Collectr remains
+ * the generous outlier.
+ *
+ * One thing worth remembering when tuning these: recognition runs on the
+ * device, so a scan costs us nothing. Every competitor pays a server for each
+ * one. Metering here is a pricing choice, not a cost recovery - which means it
+ * can be loosened at any time without anything breaking.
+ *
+ * Ten scans per video, five videos a day, is another 50. Deliberately less than
+ * the free ration: a rewarded ad has to be worth watching without becoming a
+ * way to live in the free tier forever, and it should top you up rather than
+ * replace the reason to pay.
  */
 export const LIMITS: Limits = {
   freePerDay: 30,
-  perAd: 25,
+  perAd: 10,
   adsPerDay: 5,
 };
 
