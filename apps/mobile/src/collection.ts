@@ -169,6 +169,60 @@ export function totalCards(entries: Entry[]): number {
   return n;
 }
 
+/**
+ * Re-price every pile against a fresher price book.
+ *
+ * A card's price is stored on the entry when it is scanned, because the
+ * collection has to render and total itself without the 20k catalogue loaded.
+ * The cost of that is a snapshot: a card scanned in March still says March's
+ * price, and a collection is a list of prices from every date you ever scanned
+ * on - which makes the headline total meaningless and the value chart a record
+ * of when you scanned rather than what happened to the market.
+ *
+ * So a price refresh has to walk the collection too. Three rules:
+ *
+ *  - The variant and condition the user chose are never changed. Only the
+ *    number attached to them moves.
+ *  - A card the new book has no price for keeps the price it had. A refresh
+ *    that silently zeroes a card because a feed dropped it for a day would
+ *    take real money off the total.
+ *  - Nothing else on the entry is touched, including `updatedAt`. A repricing
+ *    is not the user handling the card, and stamping it would push every pile
+ *    to the top of a "recent" sort and make the scan feed's undo point at the
+ *    wrong thing.
+ *
+ * Returns the same array when no price moved, so an unchanged refresh costs no
+ * render and no disk write.
+ */
+export function reprice(
+  entries: Entry[],
+  priceFor: (cardId: string, variant: string) => number | null,
+): Entry[] {
+  let changed = false;
+  const next = entries.map((e) => {
+    const fresh = priceFor(e.cardId, e.variant);
+    if (fresh == null || fresh === e.unitPrice) return e;
+    changed = true;
+    return { ...e, unitPrice: fresh };
+  });
+  return changed ? next : entries;
+}
+
+/** The same, for the want list, which is priced the same way. */
+export function repriceWishlist(
+  list: WishEntry[],
+  priceFor: (cardId: string) => number | null,
+): WishEntry[] {
+  let changed = false;
+  const next = list.map((w) => {
+    const fresh = priceFor(w.cardId);
+    if (fresh == null || fresh === w.unitPrice) return w;
+    changed = true;
+    return { ...w, unitPrice: fresh };
+  });
+  return changed ? next : list;
+}
+
 /** The variant a scan should default to: the priciest one that has a price. */
 export function defaultVariant(variants: PricedVariant[]): { name: string; price: number | null } {
   const priced = variants.filter((v) => v.market != null);

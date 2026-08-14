@@ -57,6 +57,10 @@ export default function CollectionScreen({
   onScan,
   onBrowse,
   onUnwish,
+  priceNote,
+  priceStale,
+  onRefreshPrices,
+  refreshing,
 }: {
   entries: Entry[];
   history: Point[];
@@ -66,6 +70,18 @@ export default function CollectionScreen({
   onScan: () => void;
   onBrowse: () => void;
   onUnwish: (cardId: string) => void;
+  /**
+   * How old the prices behind this total are.
+   *
+   * A headline that claims to be money has to say when it was last true. Every
+   * figure on this screen comes from one price file, and without its date the
+   * number is a confident assertion about a market it may not have seen for a
+   * month.
+   */
+  priceNote: string;
+  priceStale: boolean;
+  onRefreshPrices: () => void;
+  refreshing: boolean;
 }) {
   const [showWishlist, setShowWishlist] = useState(false);
   const [sort, setSort] = useState<Sort>('recent');
@@ -137,6 +153,18 @@ export default function CollectionScreen({
         <View style={{ flex: 1 }}>
           <Text style={styles.heroLabel}>COLLECTION VALUE</Text>
           <Text style={styles.hero}>{money(value)}</Text>
+          <Pressable
+            onPress={onRefreshPrices}
+            disabled={refreshing}
+            hitSlop={6}
+            style={({ pressed }) => [styles.priceNote, pressed && { opacity: 0.6 }]}
+          >
+            <View style={[styles.freshDot, priceStale && { backgroundColor: c.warn }]} />
+            <Text style={[styles.priceNoteText, priceStale && { color: c.warn }]}>
+              {refreshing ? 'Checking prices…' : priceNote}
+            </Text>
+          </Pressable>
+
           {change ? (
             <Delta
               amount={change.delta}
@@ -492,6 +520,9 @@ const styles = StyleSheet.create({
   heroLabel: { ...t.section, color: c.faint },
   hero: { ...t.hero, color: c.text, marginTop: 2, marginBottom: 5 },
   heroHint: { ...t.tiny, color: c.faint },
+  priceNote: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 },
+  freshDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: c.moneyDim },
+  priceNoteText: { ...t.tiny, color: c.faint },
   heroSide: { alignItems: 'flex-end', paddingTop: 2 },
   sideValue: {
     fontSize: 19, fontWeight: '800', color: c.text, fontVariant: ['tabular-nums'],

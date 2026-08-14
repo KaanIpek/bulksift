@@ -155,7 +155,7 @@ export class Scanner {
    * Computed once. It is read up to sixteen times a frame.
    */
   private readonly baseNames: string[];
-  private readonly book: PriceBook;
+  private book: PriceBook;
   private readonly config: ScannerConfig;
 
   private streak = 0;
@@ -228,6 +228,26 @@ export class Scanner {
 
   get priceUpdated(): string {
     return this.book.updated;
+  }
+
+  /** The book in use, so a caller can tell whether a fetched one is newer. */
+  get priceBook(): PriceBook {
+    return this.book;
+  }
+
+  /**
+   * Swap in a newer price book.
+   *
+   * Prices are the only part of the engine that goes out of date - the index
+   * and the catalogue are fixed for a build - so this exists rather than
+   * rebuilding a Scanner, which would throw away the index, the accelerator and
+   * every bit of temporal state mid-scan.
+   *
+   * Recognition is untouched by it. What a card *is* does not depend on what it
+   * costs.
+   */
+  usePrices(book: PriceBook): void {
+    this.book = book;
   }
 
   /** Raw index lookup, exposed for benchmarking the search stage on device. */

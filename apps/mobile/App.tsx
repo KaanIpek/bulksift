@@ -14,7 +14,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import type { CardRecord, PricedVariant, ScanHit } from '@bulksift/core';
+import type { CardRecord, PriceBook, PricedVariant, ScanHit } from '@bulksift/core';
 import BrowseScreen from './src/BrowseScreen';
 import CardSheet, { type SheetTarget } from './src/CardSheet';
 import CollectionScreen from './src/CollectionScreen';
@@ -33,11 +33,14 @@ const ScannerScreen = Platform.OS === 'web'
   : (require('./src/ScannerScreen').default as typeof import('./src/ScannerScreen').default);
 import SetsScreen from './src/SetsScreen';
 import {
-  addScan, defaultVariant, entryKey, entryValue, reclassify, regrade, repoint, setQuantity,
+  addScan, defaultVariant, entryKey, entryValue, reclassify, regrade, repoint, reprice,
+  repriceWishlist, setQuantity,
   toggleWish, totalCards, totalValue, wishlistValue,
   type ConditionId, type Entry, type Grade, type WishEntry,
 } from './src/collection';
 import { load, save } from './src/collectionStore';
+import { freshness, isStale, refreshDue, type PriceState } from './src/prices';
+import { cached, refresh as fetchPrices } from './src/pricesStore';
 import {
   canScan, canWatchAd, fresh, grantAd, grantPack, refill, refund, setPro, spend,
   type Entitlement,
@@ -90,6 +93,16 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [adding, setAdding] = useState<AddTarget | null>(null);
+  /**
+   * The price book actually in use, and when it was last checked.
+   *
+   * The engine ships with a snapshot so a fresh install works offline on day
+   * one. A newer file downloaded yesterday is preferred over it, and a refresh
+   * replaces both - and then walks the collection, because a price stored on an
+   * entry when it was scanned is a price from whatever date that was.
+   */
+  const [priceState, setPriceState] = useState<PriceState>({ updated: '', checkedAt: 0 });
+  const [refreshing, setRefreshing] = useState(false);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [setFilter, setSetFilter] = useState<string | null>(null);
 
@@ -310,6 +323,79 @@ export default function App() {
     [],
   );
 
+  /**
+   * Take a newer price book into use, and re-price everything already collected.
+   *
+   * The second half is the point. Without it a refresh moves the prices shown
+   * in Browse and leaves the collection quoting whatever the market said on the
+   * day each card was scanned - so the headline total is a mixture of dates and
+   * the value chart records when someone scanned rather than what the market
+   * did.
+   */
+  const applyPrices = useCallback((book: PriceBook) => {
+    if (!engine) return;
+    engine.scanner.usePrices(book);
+    setLibrary((lib) => ({
+      ...lib,
+      collections: lib.collections.map((col) => {
+        const entries = reprice(col.entries, (cardId, variant) => {
+          const v = engine.scanner.pricesFor(cardId).find((x) => x.variant === variant);
+          return v?.market ?? null;
+        });
+        const wishlist = repriceWishlist(col.wishlist, (cardId) => {
+          const v = engine.scanner.pricesFor(cardId).find((x) => x.market != null);
+          return v?.market ?? null;
+        });
+        return entries === col.entries && wishlist === col.wishlist
+          ? col
+          : { ...col, entries, wishlist };
+      }),
+    }));
+    setPriceState({ updated: book.updated, checkedAt: Date.now() });
+  }, [engine]);
+
+  /**
+   * Check for newer prices.
+   *
+   * Free once a day for everyone, because serving the file costs us nothing and
+   * an app whose prices are stale is not limited, it is wrong. Pro may ask any
+   * time, which is a convenience rather than a correctness fix.
+   */
+  const refreshPrices = useCallback(async (force = false) => {
+    if (refreshing || !engine) return;
+    setRefreshing(true);
+    try {
+      const out = await fetchPrices(engine.scanner.priceBook, { force });
+      if (out.status === 'updated') applyPrices(out.book);
+      else if (out.status === 'current') setPriceState((p) => ({ ...p, checkedAt: Date.now() }));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [engine, refreshing, applyPrices]);
+
+  /*
+   * On open: prefer a file downloaded earlier over the bundled snapshot, then
+   * check for a newer one once a calendar day.
+   */
+  useEffect(() => {
+    if (!engine) return;
+    let cancelled = false;
+    void cached().then((book) => {
+      if (cancelled || !book) return;
+      if (book.updated > engine.scanner.priceUpdated) applyPrices(book);
+      else setPriceState({ updated: engine.scanner.priceUpdated, checkedAt: 0 });
+    });
+    return () => { cancelled = true; };
+  }, [engine, applyPrices]);
+
+  useEffect(() => {
+    if (!engine || !loaded) return;
+    if (refreshDue(priceState, Date.now())) void refreshPrices(false);
+    // Deliberately not depending on `refreshPrices`: it changes identity while
+    // a refresh is in flight, and re-running this then would start a second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, loaded, priceState.checkedAt]);
+
   /** Other printings of the same illustration, for the sheet to offer. */
   const openEntry = useCallback((entry: Entry) => {
     const alternatives: CardRecord[] = [];
@@ -426,6 +512,14 @@ export default function App() {
             onBrowse={() => setTab('browse')}
             onUnwish={(cardId) =>
               setWishlist((prev) => prev.filter((w) => w.cardId !== cardId))}
+            priceNote={
+              priceState.updated
+                ? `Prices ${freshness(priceState.updated, Date.now())}`
+                : 'Prices from this build'
+            }
+            priceStale={!!priceState.updated && isStale(priceState.updated, Date.now())}
+            onRefreshPrices={() => void refreshPrices(true)}
+            refreshing={refreshing}
             />
           </View>
         ) : null}
