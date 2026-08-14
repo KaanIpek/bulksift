@@ -94,6 +94,8 @@ const SUITE = [
   { name: 'workimage', dir: mobileTestDir, needs: [] },
   { name: 'worklet-payload', dir: mobileTestDir, needs: [] },
   { name: 'thumbs', dir: mobileTestDir, needs: [] },
+  { name: 'entitlement', dir: mobileTestDir, needs: [] },
+  { name: 'library', dir: mobileTestDir, needs: [] },
 ];
 
 let failed = 0;

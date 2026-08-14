@@ -37,7 +37,19 @@ import {
   toggleWish, totalCards, totalValue, wishlistValue,
   type ConditionId, type Entry, type Grade, type WishEntry,
 } from './src/collection';
-import { loadCollection, saveCollection } from './src/collectionStore';
+import { load, save } from './src/collectionStore';
+import {
+  canScan, canWatchAd, fresh, grantAd, grantPack, refill, refund, setPro, spend,
+  type Entitlement,
+} from './src/entitlement';
+import {
+  active, add as addCollection, freshLibrary, moveCard, remove as removeCollection,
+  rename as renameCollection, setActive, update as updateCollection,
+  type Collection, type Library,
+} from './src/library';
+import Paywall, { type PaywallReason } from './src/Paywall';
+import CollectionBar from './src/CollectionBar';
+import { adsAvailable, restore, showRewardedAd, storeState, subscribe } from './src/store';
 import { record, type Point } from './src/history';
 import { loadEngine, type LoadedEngine } from './src/engine';
 import {
@@ -64,10 +76,18 @@ export default function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('scan');
 
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [wishlist, setWishlist] = useState<WishEntry[]>([]);
-  const [history, setHistory] = useState<Point[]>([]);
+  /**
+   * Every collection, and which one is on screen.
+   *
+   * The screens below still receive one collection's entries, wishlist and
+   * history exactly as they did when there was only ever one - the library is
+   * unwrapped here rather than pushed down into five components that have no
+   * business knowing there is more than one box.
+   */
+  const [library, setLibrary] = useState<Library>(() => freshLibrary(Date.now()));
+  const [ent, setEnt] = useState<Entitlement>(() => fresh(Date.now()));
   const [loaded, setLoaded] = useState(false);
+  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [setFilter, setSetFilter] = useState<string | null>(null);
 
@@ -100,6 +120,44 @@ export default function App() {
    */
   const [recent, setRecent] = useState<ScannedRow[]>([]);
 
+  /*
+   * The active collection, unwrapped.
+   *
+   * Every screen below still takes `entries`, `wishlist` and `history` exactly
+   * as it did when there was one collection. The setters write back into
+   * whichever collection is active, so switching collections is a one-line
+   * state change here and nothing at all anywhere else.
+   */
+  const current = active(library);
+  const { entries, wishlist, history } = current;
+
+  const inActive = useCallback(
+    (change: (c: Collection) => Collection) =>
+      setLibrary((lib) => updateCollection(lib, lib.activeId, change, Date.now())),
+    [],
+  );
+  const setEntries = useCallback(
+    (next: Entry[] | ((prev: Entry[]) => Entry[])) =>
+      inActive((c) => ({
+        ...c, entries: typeof next === 'function' ? next(c.entries) : next,
+      })),
+    [inActive],
+  );
+  const setWishlist = useCallback(
+    (next: WishEntry[] | ((prev: WishEntry[]) => WishEntry[])) =>
+      inActive((c) => ({
+        ...c, wishlist: typeof next === 'function' ? next(c.wishlist) : next,
+      })),
+    [inActive],
+  );
+  const setHistory = useCallback(
+    (next: Point[] | ((prev: Point[]) => Point[])) =>
+      inActive((c) => ({
+        ...c, history: typeof next === 'function' ? next(c.history) : next,
+      })),
+    [inActive],
+  );
+
   useEffect(() => {
     let cancelled = false;
     loadEngine()
@@ -109,12 +167,13 @@ export default function App() {
         console.log(`[BulkSift] engine load failed: ${msg}`);
         if (!cancelled) setBootError(msg);
       });
-    loadCollection()
+    load()
       .then((data) => {
         if (cancelled) return;
-        setEntries(data.entries);
-        setWishlist(data.wishlist);
-        setHistory(data.history ?? []);
+        setLibrary(data.library);
+        // Refill on open, not on a timer: an app that was closed overnight has
+        // to notice the new day the moment it is looked at.
+        setEnt(refill(data.entitlement, Date.now()));
         setLoaded(true);
       })
       .catch(() => { if (!cancelled) setLoaded(true); });
@@ -132,10 +191,10 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     const id = setTimeout(() => {
-      void saveCollection({ version: 1, entries, wishlist, history });
+      void save({ library, entitlement: ent });
     }, 700);
     return () => clearTimeout(id);
-  }, [entries, wishlist, history, loaded]);
+  }, [library, ent, loaded]);
 
   /*
    * Record today's total whenever it moves.
@@ -162,6 +221,17 @@ export default function App() {
    * wrote instead of the reader guessing.
    */
   const onHit = useCallback((hit: ScanHit): string => {
+    /*
+     * The allowance is spent here, at the one place a scan actually becomes a
+     * card. Checking it on the scan screen instead would mean the engine could
+     * recognise a card, show it, and then not record it - which reads as a bug
+     * rather than a limit.
+     */
+    if (canScan(ent) !== 'none') {
+      setPaywall('out-of-scans');
+      return '';
+    }
+    setEnt((e) => spend(e));
     const variants = engine?.scanner.pricesFor(hit.card.i) ?? [];
     const pick = defaultVariant(variants);
     setEntries((prev) =>
@@ -171,10 +241,17 @@ export default function App() {
     // session is precisely the drifting total this replaced.
     setSession((s) => ({ count: s.count + 1, value: s.value + (pick.price ?? 0) }));
     return entryKey(hit.card.i, pick.name, 'NM');
-  }, [engine]);
+  }, [engine, ent]);
 
-  /** Take one copy back off a pile - the scan feed's "that was not a card". */
+  /**
+   * Take one copy back off a pile - the scan feed's "that was not a card".
+   *
+   * The scan is given back too. A read that was never a card should not cost
+   * an allowance, and the alternative - charging for the app's own mistake -
+   * is the kind of thing that turns a limit into a grievance.
+   */
   const undoScan = useCallback((key: string) => {
+    setEnt(refund);
     setEntries((prev) => {
       const found = prev.find((e) => e.key === key);
       if (!found) return prev;
@@ -308,7 +385,20 @@ export default function App() {
         ) : null}
 
         {tab === 'collection' ? (
-          <CollectionScreen
+          <View style={{ flex: 1 }}>
+            <View style={styles.bar}>
+              <CollectionBar
+                library={library}
+                pro={ent.pro}
+                onSelect={(id) => setLibrary((lib) => setActive(lib, id))}
+                onCreate={(name) => setLibrary((lib) => addCollection(lib, name, Date.now()))}
+                onRename={(id, name) =>
+                  setLibrary((lib) => renameCollection(lib, id, name, Date.now()))}
+                onDelete={(id) => setLibrary((lib) => removeCollection(lib, id))}
+                onWantPro={() => setPaywall('collections')}
+              />
+            </View>
+            <CollectionScreen
             entries={entries}
             history={history}
             wishlist={wishlist}
@@ -318,7 +408,8 @@ export default function App() {
             onBrowse={() => setTab('browse')}
             onUnwish={(cardId) =>
               setWishlist((prev) => prev.filter((w) => w.cardId !== cardId))}
-          />
+            />
+          </View>
         ) : null}
 
         {tab === 'sets' ? (
@@ -362,6 +453,29 @@ export default function App() {
           );
         })}
       </View>
+
+      <Paywall
+        reason={paywall}
+        entitlement={ent}
+        onClose={() => setPaywall(null)}
+        onWatchAd={() => {
+          if (!adsAvailable()) return;
+          void showRewardedAd().then((earned) => { if (earned) setEnt(grantAd); });
+        }}
+        onBuyCredits={() => { /* packs arrive with the store */ }}
+        onSubscribe={() => {
+          if (storeState() !== 'ready') return;
+          void subscribe().then((r) => { if (r.ok && r.pro) setEnt((e) => setPro(e, true)); });
+        }}
+        onRestore={() => {
+          void restore().then((r) => {
+            if (r.ok) {
+              if (r.pro != null) setEnt((e) => setPro(e, r.pro!));
+              if (r.credits) setEnt((e) => grantPack(e, r.credits!));
+            }
+          });
+        }}
+      />
 
       <CardSheet
         target={sheetTarget}
@@ -473,6 +587,7 @@ const styles = StyleSheet.create({
   },
   muted: { ...t.meta, color: c.dim, textAlign: 'center' },
   err: { ...t.body, color: c.bad },
+  bar: { paddingHorizontal: s.lg, paddingTop: s.sm },
   tabs: {
     flexDirection: 'row',
     borderTopWidth: 1, borderTopColor: c.line,
