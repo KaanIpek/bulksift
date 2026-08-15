@@ -21,9 +21,21 @@ import { Platform } from 'react-native';
 
 import { appleAuthSdk } from './native';
 
-/** Where the project lives. Null until one exists; everything degrades. */
-export const SUPABASE_URL: string | null = null;
-export const SUPABASE_ANON_KEY: string | null = null;
+/**
+ * Where the project lives.
+ *
+ * The key is Supabase's *publishable* key, which is meant to ship inside the
+ * app - it identifies the project and authorises nothing on its own. Row-level
+ * security is what actually protects the data: the `collections` table has RLS
+ * on with a policy of `auth.uid() = user_id`, so this key can only ever reach
+ * rows belonging to whoever is signed in.
+ *
+ * The *secret* key is the dangerous one. It bypasses RLS entirely and must
+ * never appear in the app, in this repo, or in a build log.
+ */
+export const SUPABASE_URL: string | null = 'https://jyauggpngoihtpqlnsme.supabase.co';
+export const SUPABASE_ANON_KEY: string | null =
+  'sb_publishable_gQywwHQ7UoxXkcDkz6osxg_tm6ha6WD';
 
 export interface Account {
   id: string;

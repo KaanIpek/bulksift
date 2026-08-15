@@ -32,7 +32,7 @@ import { adsSdk, trackingSdk } from './native';
  * users earns nothing and looks broken, and a build that serves nothing at all
  * can at least say so on the paywall.
  */
-export const REWARDED_UNIT_ID: string | null = null;
+export const REWARDED_UNIT_ID: string | null = 'ca-app-pub-8253427588583765/6328673968';
 
 /** How long to wait for a video before giving up and telling the user. */
 const LOAD_TIMEOUT_MS = 12_000;

@@ -46,9 +46,8 @@
       [
         "react-native-google-mobile-ads",
         {
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
-          "userTrackingUsageDescription": "Allow tracking so the free scan videos can show relevant ads. Declining does not reduce the scans you earn - the ads are just less relevant.",
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713"
+          "iosAppId": "ca-app-pub-8253427588583765~6401609975",
+          "userTrackingUsageDescription": "Allow tracking so the free scan videos can show relevant ads. Declining does not reduce the scans you earn - the ads are just less relevant."
         }
       ],
       [
