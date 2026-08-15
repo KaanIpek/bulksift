@@ -16,6 +16,8 @@ import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 
 import { normalise, type Entitlement } from './entitlement';
+import { readBases } from './merge';
+import type { Bases } from './sync';
 import { loadLibrary, type Library } from './library';
 
 const FILE = 'bulksift-collection.json';
@@ -23,6 +25,18 @@ const FILE = 'bulksift-collection.json';
 export interface Saved {
   library: Library;
   entitlement: Entitlement;
+  /**
+   * The last state each collection was agreed on with the server.
+   *
+   * Persisted, and it has to be. The three-way merge computes
+   * `mine + theirs - base`, so a base that does not survive a restart makes
+   * every sync look like a first sync - and a first sync ADDS both sides.
+   * Scan three Charizards, close the app, sync, and there are six.
+   *
+   * Empty for anyone who has never signed in, which is the common case and
+   * costs nothing.
+   */
+  bases: Bases;
 }
 
 /**
@@ -43,7 +57,9 @@ const fileHandle = () => new File(Paths.document, FILE);
 
 /** Turn whatever was on disk into something the app can run on. */
 function parse(raw: string | null, at: number): Saved {
-  if (!raw) return { library: loadLibrary(null, at), entitlement: normalise(null, at) };
+  if (!raw) {
+    return { library: loadLibrary(null, at), entitlement: normalise(null, at), bases: {} };
+  }
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
@@ -51,9 +67,10 @@ function parse(raw: string | null, at: number): Saved {
       // shapes, so an upgrade keeps every card.
       library: loadLibrary(parsed.library ?? parsed, at),
       entitlement: normalise(parsed.entitlement, at),
+      bases: readBases(parsed.bases),
     };
   } catch {
-    return { library: loadLibrary(null, at), entitlement: normalise(null, at) };
+    return { library: loadLibrary(null, at), entitlement: normalise(null, at), bases: {} };
   }
 }
 

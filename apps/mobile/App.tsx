@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Pressable, StyleSheet, Text, View,
+  ActivityIndicator, AppState, Pressable, StyleSheet, Text, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -52,6 +52,8 @@ import {
 } from './src/library';
 import Paywall, { type PaywallReason } from './src/Paywall';
 import SettingsScreen from './src/SettingsScreen';
+import { syncOnce, type Bases } from './src/sync';
+import { restoreSession } from './src/auth';
 import { runSelfTest } from './src/selfTest';
 import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
@@ -109,6 +111,10 @@ export default function App() {
    * could not run it.
    */
   const [selfTest, setSelfTest] = useState<string[] | null>(null);
+  /** What each collection was last agreed on with the server. See `Saved`. */
+  const [bases, setBases] = useState<Bases>({});
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
   const [adding, setAdding] = useState<AddTarget | null>(null);
   /**
    * The price book actually in use, and when it was last checked.
@@ -226,6 +232,7 @@ export default function App() {
       .then((data) => {
         if (cancelled) return;
         setLibrary(data.library);
+        setBases(data.bases);
         // Refill on open, not on a timer: an app that was closed overnight has
         // to notice the new day the moment it is looked at.
         setEnt(refill(data.entitlement, Date.now()));
@@ -246,10 +253,10 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     const id = setTimeout(() => {
-      void save({ library, entitlement: ent });
+      void save({ library, entitlement: ent, bases });
     }, 700);
     return () => clearTimeout(id);
-  }, [library, ent, loaded]);
+  }, [library, ent, bases, loaded]);
 
   /*
    * Record today's total whenever it moves.
@@ -261,6 +268,61 @@ export default function App() {
     if (!loaded) return;
     setHistory((prev) => record(prev, totalValue(entries), totalCards(entries), Date.now()));
   }, [entries, loaded]);
+
+  /**
+   * Pull, merge, push - once.
+   *
+   * The merge itself is in `merge.ts` and is where the difficulty lives: a pile
+   * has a quantity, so last-write-wins is wrong. Three here and two on a tablet
+   * is five, not three.
+   *
+   * Nothing is written unless the whole round trip worked. The device's own
+   * collection is the thing that must survive, and a half-applied sync is worse
+   * than no sync - which is also why the agreed base is only recorded after the
+   * push succeeds.
+   */
+  const runSync = useCallback(async (announce: boolean) => {
+    if (syncing || !loaded) return;
+    setSyncing(true);
+    try {
+      const out = await syncOnce(library, bases, Date.now());
+      if (out.status === 'synced') {
+        setLibrary(out.library);
+        if (out.bases) setBases(out.bases);
+        if (announce) setSyncNote('Collections synced.');
+      } else if (announce) {
+        setSyncNote(out.status === 'signed-out'
+          ? 'Sign in to sync between devices.'
+          : `Could not sync: ${out.reason}`);
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, [library, bases, syncing, loaded]);
+
+  /*
+   * Sync when the app is opened and whenever it comes back to the front.
+   *
+   * Not on every change: a bulk session touches hundreds of piles a minute and
+   * pushing each one would be hundreds of round trips to compute something the
+   * merge needs all of at once. Coming back to the front is the moment the
+   * other device's copy might have moved.
+   */
+  useEffect(() => {
+    if (!loaded) return;
+    let cancelled = false;
+    void restoreSession().then(() => {
+      if (!cancelled) void runSync(false);
+    });
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void runSync(false);
+    });
+    return () => { cancelled = true; sub.remove(); };
+    // Deliberately not depending on `runSync`: it changes identity whenever the
+    // collection does, which during a scan is several times a second, and each
+    // change would tear down and re-add the listener.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
 
   const variantsFor = useCallback(
     (cardId: string): PricedVariant[] => engine?.scanner.pricesFor(cardId) ?? [],
@@ -594,6 +656,9 @@ export default function App() {
             refreshing={refreshing}
             onOpenPaywall={() => setPaywall('settings')}
             onProChanged={(pro) => setEnt((e) => setPro(e, pro))}
+            onSync={() => void runSync(true)}
+            syncing={syncing}
+            syncNote={syncNote}
             onRunSelfTest={() => {
               if (!engine) return;
               setSelfTest(['running…']);

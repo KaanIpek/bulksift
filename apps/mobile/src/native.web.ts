@@ -22,3 +22,7 @@ export function purchasesSdk<T>(): T | null {
 export function appleAuthSdk<T>(): T | null {
   return null;
 }
+
+export function trackingSdk<T>(): T | null {
+  return null;
+}

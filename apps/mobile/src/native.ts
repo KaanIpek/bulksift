@@ -39,6 +39,15 @@ export function purchasesSdk<T>(): T | null {
   }
 }
 
+/** App Tracking Transparency. iOS only; a no-op elsewhere. */
+export function trackingSdk<T>(): T | null {
+  try {
+    return require('expo-tracking-transparency') as T;
+  } catch {
+    return null;
+  }
+}
+
 /** Sign in with Apple. iOS only, and absent from a simulator without an Apple ID. */
 export function appleAuthSdk<T>(): T | null {
   try {

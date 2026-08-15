@@ -173,3 +173,34 @@ export function sweep(removed: Record<string, number>, olderThan: number): Recor
   }
   return out;
 }
+
+/**
+ * Read the agreed bases back off disk, defensively.
+ *
+ * Pure and tested because getting it wrong is invisible and expensive. The
+ * three-way merge computes `mine + theirs - base`, so a base that fails to
+ * survive a restart makes the next sync look like a first sync - and a first
+ * sync ADDS both sides. Scan three Charizards, close the app, sync, and there
+ * are six. Nothing errors, nothing logs, the number is just wrong.
+ *
+ * Anything that is not a usable snapshot becomes an empty one, which is the
+ * safe direction: an empty base double-counts at worst, while a malformed one
+ * would subtract quantities that were never agreed.
+ */
+export function readBases(raw: unknown): Record<string, Snapshot> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, Snapshot> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    const v = value as Partial<Snapshot>;
+    out[id] = {
+      entries: Array.isArray(v.entries) ? v.entries : [],
+      wishlist: Array.isArray(v.wishlist) ? v.wishlist : [],
+      history: Array.isArray(v.history) ? v.history : [],
+      removed: v.removed && typeof v.removed === 'object' && !Array.isArray(v.removed)
+        ? v.removed
+        : {},
+    };
+  }
+  return out;
+}

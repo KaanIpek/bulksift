@@ -47,8 +47,14 @@
         "react-native-google-mobile-ads",
         {
           "iosAppId": "ca-app-pub-3940256099942544~1458002511",
-          "userTrackingUsageDescription": "This lets BulkSift show you a relevant video when you choose to watch one for extra scans. Declining changes nothing else.",
+          "userTrackingUsageDescription": "Allow tracking so the free scan videos can show relevant ads. Declining does not reduce the scans you earn - the ads are just less relevant.",
           "androidAppId": "ca-app-pub-3940256099942544~3347511713"
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "Allow tracking so the free scan videos can show relevant ads. Declining does not reduce the scans you earn - the ads are just less relevant."
         }
       ]
     ]

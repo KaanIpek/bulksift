@@ -68,6 +68,9 @@ export default function SettingsScreen({
   refreshing,
   onOpenPaywall,
   onProChanged,
+  onSync,
+  syncing,
+  syncNote,
   onRunSelfTest,
   selfTest,
 }: {
@@ -77,6 +80,9 @@ export default function SettingsScreen({
   refreshing: boolean;
   onOpenPaywall: () => void;
   onProChanged: (pro: boolean) => void;
+  onSync: () => void;
+  syncing: boolean;
+  syncNote: string | null;
   onRunSelfTest: () => void;
   selfTest: string[] | null;
 }) {
@@ -104,6 +110,9 @@ export default function SettingsScreen({
     if (r.cancelled) return;
     if (!r.ok) { setNote(r.reason ?? 'Sign-in failed.'); return; }
     setAccount(r.account ?? null);
+    // Pull straight away: someone signing in on a second device expects their
+    // collection to be there, not after the next time they background the app.
+    onSync();
   });
 
   const onSendCode = () => withBusy('code', async () => {
@@ -119,6 +128,7 @@ export default function SettingsScreen({
     setAccount(r.account ?? null);
     setCodeSent(false);
     setCode('');
+    onSync();
   });
 
   /*
@@ -209,6 +219,12 @@ export default function SettingsScreen({
               await signOut();
               setAccount(null);
             })}
+          />
+          <Row
+            label={syncing ? 'Syncing…' : 'Sync now'}
+            value={syncNote ?? undefined}
+            onPress={syncing ? undefined : onSync}
+            tone="accent"
           />
           <Row
             label={busy === 'delete' ? 'Deleting…' : 'Delete account'}

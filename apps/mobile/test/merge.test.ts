@@ -11,7 +11,7 @@
 
 import { addScan, setQuantity, totalCards, type Entry } from '../src/collection.ts';
 import {
-  emptySnapshot, mergeEntries, mergeHistory, mergeSnapshots, mergeWishlist, sweep,
+  emptySnapshot, mergeEntries, mergeHistory, mergeSnapshots, mergeWishlist, readBases, sweep,
 } from '../src/merge.ts';
 
 let failed = 0;
@@ -237,6 +237,44 @@ function pile(c: typeof CHAR, n: number, at = T): Entry[] {
   const twice = mergeEntries(once, once, once);
   check('merging an already-merged state changes nothing',
     totalCards(twice) === totalCards(once), `${totalCards(twice)} vs ${totalCards(once)}`);
+}
+
+/*
+ * 17. THE BASE HAS TO SURVIVE A RESTART.
+ *
+ *     This is the one that produced a real bug. The merge was written, tested
+ *     and correct, and the base it depends on was never written to disk. Every
+ *     sync after a relaunch then looked like a first sync - and a first sync
+ *     adds both sides, so a collection doubles each time the app is reopened.
+ *     Nothing errors and nothing logs; the number is simply wrong.
+ */
+{
+  const base = { ...emptySnapshot(), entries: pile(CHAR, 3) };
+  const saved = JSON.parse(JSON.stringify({ 'col-1': base })) as unknown;
+  const back = readBases(saved);
+  check('a base survives being written and read', back['col-1'] !== undefined);
+  check(
+    'with its quantities intact',
+    totalCards(back['col-1'].entries) === 3,
+    String(totalCards(back['col-1'].entries)),
+  );
+
+  // What it protects against: sync, restart, sync again, still three.
+  const afterFirst = mergeEntries(pile(CHAR, 3), [], []);
+  const afterRestart = mergeEntries(afterFirst, afterFirst, back['col-1'].entries);
+  check(
+    'syncing again after a restart does not double the pile',
+    totalCards(afterRestart) === 3,
+    String(totalCards(afterRestart)),
+  );
+
+  check('a missing file gives an empty base', Object.keys(readBases(null)).length === 0);
+  check('and so does a hostile one', Object.keys(readBases('nope')).length === 0);
+  const junk = readBases({ 'col-1': { entries: 'not an array', removed: [] } });
+  check(
+    'a malformed snapshot degrades to empty rather than throwing',
+    junk['col-1'].entries.length === 0 && !Array.isArray(junk['col-1'].removed),
+  );
 }
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');

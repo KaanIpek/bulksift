@@ -22,7 +22,7 @@
 
 import { Platform } from 'react-native';
 
-import { adsSdk } from './native';
+import { adsSdk, trackingSdk } from './native';
 
 /**
  * The AdMob rewarded unit.
@@ -60,11 +60,44 @@ function sdk(): AdsModule | null {
   }
 }
 
+/**
+ * Ask for tracking permission, once, before anything can request an ad.
+ *
+ * Apple requires this of any app that touches the advertising identifier, and
+ * the ad SDK touches it during initialisation - so the order matters: prompt
+ * first, initialise second. Initialising first collects the identifier before
+ * consent, which is the version that gets rejected.
+ *
+ * The answer is deliberately not checked. Declining is allowed and changes
+ * nothing about what the app does: the same ten scans are granted for the same
+ * watched video, and the ads are simply less relevant. Rewards that depend on
+ * the answer would turn a consent prompt into a paywall, which is both against
+ * the rules and a bad trade for a user who just wanted to scan some cards.
+ */
+async function askTracking(): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  const tt = trackingSdk<{
+    getTrackingPermissionsAsync: () => Promise<{ status: string; canAskAgain: boolean }>;
+    requestTrackingPermissionsAsync: () => Promise<{ status: string }>;
+  }>();
+  if (!tt) return;
+  try {
+    // Asking again after a decision shows nothing and returns the stored
+    // answer, but checking first keeps the prompt out of the launch path for
+    // everyone who has already answered.
+    const current = await tt.getTrackingPermissionsAsync();
+    if (current.status === 'undetermined' && current.canAskAgain) {
+      await tt.requestTrackingPermissionsAsync();
+    }
+  } catch { /* a refused prompt is not a reason to withhold the reward */ }
+}
+
 /** Start the ad SDK. Safe to call more than once. */
 export async function configure(): Promise<void> {
   const m = sdk();
   if (!m || started) return;
   try {
+    await askTracking();
     await m.default().initialize();
     started = true;
   } catch {
