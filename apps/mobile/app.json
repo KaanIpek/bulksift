@@ -14,7 +14,8 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "icon": "./assets/icon.png",
-      "buildNumber": "20"
+      "buildNumber": "20",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.rldgames.bulksift",
@@ -46,7 +47,8 @@
         "react-native-google-mobile-ads",
         {
           "iosAppId": "ca-app-pub-3940256099942544~1458002511",
-          "userTrackingUsageDescription": "This lets BulkSift show you a relevant video when you choose to watch one for extra scans. Declining changes nothing else."
+          "userTrackingUsageDescription": "This lets BulkSift show you a relevant video when you choose to watch one for extra scans. Declining changes nothing else.",
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713"
         }
       ]
     ]
