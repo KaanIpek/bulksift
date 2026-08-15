@@ -55,7 +55,7 @@ import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
 import {
   adsAvailable, buy, configure as configureStore, currentPro, products as storeProducts,
-  restore, showRewardedAd, storeState, subscribe, type Product,
+  restore, showRewardedAd, storeState, subscribe, configureAds, type Product,
 } from './src/store';
 import { record, type Point } from './src/history';
 import { loadEngine, type LoadedEngine } from './src/engine';
@@ -188,6 +188,7 @@ export default function App() {
    */
   useEffect(() => {
     let cancelled = false;
+    void configureAds();
     void configureStore().then(async () => {
       if (cancelled) return;
       const pro = await currentPro();
@@ -606,8 +607,13 @@ export default function App() {
         storeReady={storeState() === 'ready'}
         adsReady={adsAvailable()}
         onWatchAd={() => {
-          if (!adsAvailable()) return;
-          void showRewardedAd().then((earned) => { if (earned) setEnt(grantAd); });
+          if (!adsAvailable() || buying) return;
+          setBuying(true);
+          // Credited only when the SDK says the reward was earned - not when
+          // the video was merely shown, and not when it was closed.
+          void showRewardedAd()
+            .then((earned) => { if (earned) setEnt(grantAd); })
+            .finally(() => setBuying(false));
         }}
         packs={packs}
         busy={buying}

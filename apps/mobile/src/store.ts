@@ -209,18 +209,9 @@ export async function currentPro(): Promise<boolean | null> {
   }
 }
 
-export function adsAvailable(): boolean {
-  return false;
-}
-
-/**
- * Show a rewarded video.
- *
- * Resolves true ONLY on the SDK's earned-reward callback - not on "shown" and
- * not on "dismissed", both of which fire when someone closes a video after two
- * seconds. Getting that distinction wrong is how an ad-funded free tier becomes
- * a free tier.
+/*
+ * Ads live in `ads.ts`. Re-exported here so the app has one place it asks about
+ * "things that involve money", and so a screen never imports an ad SDK path
+ * directly.
  */
-export async function showRewardedAd(): Promise<boolean> {
-  return false;
-}
+export { adsAvailable, showRewardedAd, configure as configureAds } from './ads';
