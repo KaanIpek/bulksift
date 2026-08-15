@@ -97,6 +97,7 @@ const SUITE = [
   { name: 'entitlement', dir: mobileTestDir, needs: [] },
   { name: 'library', dir: mobileTestDir, needs: [] },
   { name: 'prices', dir: mobileTestDir, needs: [] },
+  { name: 'merge', dir: mobileTestDir, needs: [] },
 ];
 
 let failed = 0;

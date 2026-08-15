@@ -40,6 +40,15 @@
       "eas": {
         "projectId": "5d416ed8-0f50-4a86-a395-02644b37593e"
       }
-    }
+    },
+    "plugins": [
+      [
+        "react-native-google-mobile-ads",
+        {
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "userTrackingUsageDescription": "This lets BulkSift show you a relevant video when you choose to watch one for extra scans. Declining changes nothing else."
+        }
+      ]
+    ]
   }
 }
