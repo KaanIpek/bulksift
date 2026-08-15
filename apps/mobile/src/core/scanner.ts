@@ -66,6 +66,35 @@ const STRIP_DECISIVE = 6;
 const NAME_MARGIN_K = 16;
 
 /**
+ * How many frames of one view are voted together.
+ *
+ * Five is where the measured recovery flattens - a seventh frame buys under a
+ * bit - and it is a sixth of a second at 30 fps, short enough that the ring
+ * refreshes before a card can be swapped without the geometry test noticing.
+ */
+const VOTE_FRAMES = 5;
+
+/**
+ * Per-bit majority over several descriptors of the same view.
+ *
+ * With an odd count there is no tie to break. With an even one a tie falls to
+ * zero, which is the same way `describe` resolves an exact comparison.
+ */
+function majority(descs: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(descs[0].length);
+  const need = descs.length / 2;
+  for (let byte = 0; byte < out.length; byte++) {
+    for (let bit = 0; bit < 8; bit++) {
+      const mask = 0x80 >> bit;
+      let ones = 0;
+      for (let i = 0; i < descs.length; i++) if (descs[i][byte] & mask) ones++;
+      if (ones > need) out[byte] |= mask;
+    }
+  }
+  return out;
+}
+
+/**
  * A card's name without the parenthetical the catalogue uses to separate
  * printings of it: "Professor's Research (Professor Sada)" -> "Professor's
  * Research". Two rows sharing this are the same card in different clothes, and
@@ -195,6 +224,32 @@ export class Scanner {
   private lastQuery: Uint8Array | null = null;
   /** The margin of the last accepted read, for frames that reuse it. */
   private lastNameMargin = 0;
+  /**
+   * Recent descriptors of what looks like the same card in the same pose.
+   *
+   * A shiny card is the hard case, and the device says so plainly: full arts
+   * never read, holos rarely, matte cards fine. The perturbation table measured
+   * at the start named glare as the largest single term - 210 bits against 86
+   * for triple blur - and the distances coming off the device, 203 to 230, sit
+   * right on it.
+   *
+   * But a highlight does not stay put. The hand moves, the card tilts, and the
+   * blown-out band slides across the surface, so the bits it destroys are
+   * different on every frame while the bits it misses are the same. A per-bit
+   * majority over a handful of frames therefore recovers a read that no single
+   * frame contains. Measured on 40 fixture cards with a highlight moving over
+   * them each frame:
+   *
+   *              one frame          five-frame vote
+   *   90% glare  d=109 m=103        d=78 m=124
+   *   75% glare  d=105 m=104        d=78 m=124
+   *   no glare   d=73  m=127        d=73 m=127
+   *
+   * which is most of the way back to a clean card, for an accumulator and no
+   * index rebuild. Masking the glare was tried before and rejected: it throws
+   * away the bits it covers, and this throws away nothing.
+   */
+  private recent: Uint8Array[] = [];
   /** Footer of the last recognised card, kept only when it was a near-tie. */
   private lastStrip: Uint8Array | null = null;
   /** Consecutive frames answered from `lastResult` without recognising again. */
@@ -414,11 +469,29 @@ export class Scanner {
       timings.describe += performance.now() - tCal;
     }
 
+    /*
+     * Keep this frame's descriptor with the last few of the same view, and
+     * search with their majority rather than with this frame alone.
+     *
+     * The ring is cleared whenever the card moves enough that the frames are no
+     * longer of the same pose, because voting across two different geometries
+     * averages two different cards into neither of them. `sameView` is the same
+     * test the reuse path uses, and it is about the quad rather than the match,
+     * so it does not depend on the answer this is trying to improve.
+     */
+    if (!this.lastDetection
+        || !sameView(this.lastDetection, detection, REUSE_SIZE_TOL, REUSE_LEVEL)) {
+      this.recent.length = 0;
+    }
+    this.recent.push(qa);
+    if (this.recent.length > VOTE_FRAMES) this.recent.shift();
+    const voted = this.recent.length >= 3 ? majority(this.recent) : qa;
+
     // Read the orientation that worked last time, and only pay for the other
     // one if this read is not good enough to accept.
     const tSearch = performance.now();
-    let result: MatchResult = this.index.search(qa);
-    let query = qa;
+    let result: MatchResult = this.index.search(voted);
+    let query = voted;
     timings.search = performance.now() - tSearch;
 
     if (result.best.index < 0 || result.best.distance > this.config.maxDistance) {
@@ -433,6 +506,9 @@ export class Scanner {
         query = other.desc;
         read = other;
         this.preferFlipped = !this.preferFlipped;
+        // The ring holds the other orientation's descriptors; they cannot be
+        // voted with these.
+        this.recent.length = 0;
       }
     }
     timings.total = timings.detect + timings.describe + timings.search;
@@ -493,6 +569,7 @@ export class Scanner {
     this.emittedThisPass.clear();
     this.streakBest = null;
     this.missFrames = 0;
+    this.recent.length = 0;
   }
 
   /**
