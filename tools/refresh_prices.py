@@ -107,9 +107,27 @@ def main():
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(payload, f, separators=(",", ":"), ensure_ascii=False)
     os.replace(tmp, out_path)
+
+    # The manifest the app checks before pulling 1.7 MB.
+    #
+    # Written here rather than by hand because the two files disagreeing is a
+    # silent failure in the worse direction: a stale manifest beside a fresh
+    # book means no device ever fetches the new prices, and nothing anywhere
+    # reports an error. Same writer, same run, same date.
+    meta_path = os.path.join(os.path.dirname(out_path), "prices-meta.json")
+    meta_tmp = meta_path + ".tmp"
+    with open(meta_tmp, "w", encoding="utf-8") as f:
+        json.dump(
+            {"updated": payload["updated"], "cards": len(prices)},
+            f, separators=(",", ":"),
+        )
+    os.replace(meta_tmp, meta_path)
+
     print(f"wrote data/prices.json ({os.path.getsize(out_path)/1e6:.2f} MB) "
           f"for {payload['updated']}")
+    print(f"wrote data/prices-meta.json ({os.path.getsize(meta_path)} bytes)")
     print("run `npm run sync` to push it into the apps")
+    print("upload BOTH files to the price host; the manifest is what devices check")
     return 0
 
 
