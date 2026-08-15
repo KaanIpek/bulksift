@@ -512,7 +512,52 @@ export default function ScannerScreen({
           outputs={outputs}
           onError={(e) => setDiag(`camera error: ${e.message}`)}
         />
-        <ScanOverlay aim={aim} live={live} fps={fps} />
+        <ScanOverlay
+          aim={aim}
+          live={live}
+          fps={fps}
+          onConfirm={(card) => {
+            const rec = engine.byId.get(card.cardId);
+            if (!rec) return;
+            /*
+             * Committed as a hit, through exactly the same path a confirmed
+             * scan takes - so it costs an allowance, lands in the feed with its
+             * runners-up, and can be undone or redirected like any other.
+             *
+             * The scanner is told about it as well, so the card it is currently
+             * looking at does not get committed a second time when it finally
+             * satisfies the accept rule on its own.
+             */
+            const variants = engine.scanner.pricesFor(rec.i);
+            const best = variants.find((v) => v.market != null);
+            const entryKey = onHit({
+              card: rec,
+              distance: 0,
+              margin: 0,
+              confidence: 1,
+              variants,
+              topMarket: best?.market ?? null,
+              runnersUp: [],
+            });
+            if (!entryKey) return;
+            engine.scanner.noteEmitted(rec.i);
+            onRecent((prev) => [
+              {
+                key: `${rec.i}-${seqRef.current++}`,
+                entryKey,
+                name: rec.n,
+                set: rec.S,
+                cardId: rec.i,
+                number: rec.u,
+                rarity: rec.r ?? null,
+                price: best?.market ?? null,
+                unsure: false,
+                others: [],
+              },
+              ...prev,
+            ].slice(0, 5));
+          }}
+        />
       </ScanViewport>
 
       <ScanSummary

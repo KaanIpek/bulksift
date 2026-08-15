@@ -259,6 +259,25 @@ export class Scanner {
     return variantsOf(this.book.prices[cardId]);
   }
 
+  /**
+   * Record that a card has been counted by something other than a scan.
+   *
+   * The scan screen lets the user confirm the card the engine is currently
+   * showing rather than waiting for it to be sure. Without this the engine
+   * would keep tracking that same card and commit it again the moment it
+   * satisfied the accept rule on its own.
+   *
+   * Takes a card id rather than a row so the caller does not have to know the
+   * index's internal numbering.
+   */
+  noteEmitted(cardId: string): void {
+    const row = this.cards.findIndex((c) => c.i === cardId);
+    if (row < 0) return;
+    this.emittedThisPass.add(row);
+    this.lastEmitFrame.set(row, this.frameNo);
+    this.emittedIndex = row;
+  }
+
   /** Reset temporal state, e.g. when the user restarts a scanning session. */
   reset(): void {
     this.streak = 0;

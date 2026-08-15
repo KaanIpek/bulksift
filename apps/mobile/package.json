@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.19",
+    "@supabase/supabase-js": "^2.112.3",
     "expo": "~56.0.12",
     "expo-asset": "~56.0.22",
     "expo-file-system": "~56.0.9",

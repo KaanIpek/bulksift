@@ -17,7 +17,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import CardImage from './CardImage';
-import { ChevronIcon, ScanIcon, TrashIcon } from './icons';
+import { CheckIcon, ChevronIcon, ScanIcon, TrashIcon } from './icons';
 import { Badge } from './parts';
 import { c, money, r, s, t } from './theme';
 
@@ -66,8 +66,27 @@ export interface LiveCard {
  * quality, more than blur, white balance and glare put together.
  */
 export function ScanOverlay({
-  aim, live, fps,
-}: { aim: Aim; live: LiveCard | null; fps: number }) {
+  aim, live, fps, onConfirm,
+}: {
+  aim: Aim;
+  live: LiveCard | null;
+  fps: number;
+  /**
+   * Take the card the engine is currently showing, without waiting for it to be
+   * sure.
+   *
+   * On a real phone the margin between the winner and the next different card
+   * runs at 2 to 15 bits where the fixtures give 146, so the accept rule refuses
+   * the great majority of frames - 16,181 of 17,746 in one session. The engine
+   * is often looking straight at the right card and declining to commit it.
+   *
+   * The person holding the card can see the answer on screen and knows whether
+   * it is right. This lets them say so. It is not a workaround for a bad
+   * recogniser so much as an admission that they have information the
+   * recogniser does not.
+   */
+  onConfirm?: (card: LiveCard) => void;
+}) {
   const bracket = aim === 'good' ? c.good : aim === 'near' ? c.warn : 'rgba(242,244,249,0.5)';
   return (
     <>
@@ -108,6 +127,16 @@ export function ScanOverlay({
           <Text style={styles.fpsText}>{fps.toFixed(0)} fps</Text>
         </View>
       </View>
+
+      {live && onConfirm ? (
+        <Pressable
+          onPress={() => onConfirm(live)}
+          style={({ pressed }) => [styles.confirm, pressed && { opacity: 0.8 }]}
+        >
+          <CheckIcon size={16} color={c.onAccent} strong />
+          <Text style={styles.confirmText}>That&apos;s my card — add it</Text>
+        </Pressable>
+      ) : null}
     </>
   );
 }
@@ -323,6 +352,18 @@ const styles = StyleSheet.create({
   cornerLeft: { borderRightWidth: 0, borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
   cornerRight: { borderLeftWidth: 0, borderTopRightRadius: 10, borderBottomRightRadius: 10 },
 
+  /*
+   * Above the readout rather than inside it: the readout names the card and
+   * this acts on it, and a control that commits something to a collection
+   * should not sit on the same line as a label.
+   */
+  confirm: {
+    position: 'absolute', left: s.md, right: s.md, bottom: HUD_H + s.sm,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 11, borderRadius: r.pill,
+    backgroundColor: c.accent,
+  },
+  confirmText: { ...t.body, color: c.onAccent, fontWeight: '800' },
   hud: {
     position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: HUD_H,
     paddingHorizontal: s.md, paddingVertical: s.sm,
