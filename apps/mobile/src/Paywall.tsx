@@ -19,6 +19,7 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { LIMITS, type Entitlement } from './entitlement';
+import type { Product } from './store';
 import { CheckIcon, CloseIcon, ScanIcon } from './ui/icons';
 import { Badge, Button } from './ui/parts';
 import { c, r, s, shadow, t } from './ui/theme';
@@ -58,6 +59,7 @@ export default function Paywall({
   onClose,
   onWatchAd,
   onBuyCredits,
+  packs = [],
   onSubscribe,
   onRestore,
   busy,
@@ -69,7 +71,7 @@ export default function Paywall({
   onClose: () => void;
   /** Offer a rewarded video. Resolves when the SDK says the reward was earned. */
   onWatchAd: () => void;
-  onBuyCredits: () => void;
+  onBuyCredits: (productId: string) => void;
   onSubscribe: () => void;
   onRestore: () => void;
   /** A purchase or an ad is in flight; every action is disabled meanwhile. */
@@ -83,6 +85,8 @@ export default function Paywall({
    */
   storeReady?: boolean;
   adsReady?: boolean;
+  /** Credit packs on sale, straight from the store. */
+  packs?: Product[];
 }) {
   if (!reason) return null;
   const head = HEADLINE[reason];
@@ -156,11 +160,31 @@ export default function Paywall({
               <Text style={styles.optionSub}>
                 A one-off purchase. No subscription, and the scans never expire.
               </Text>
-              <Button
-                label={storeReady ? 'See packs' : 'Not available yet'}
-                onPress={onBuyCredits}
-                disabled={busy || !storeReady}
-              />
+              {/*
+                The packs come from the store, so the prices are the ones the
+                user will actually be charged in their own currency - never a
+                number typed into this file.
+              */}
+              {storeReady && packs.length ? (
+                <View style={styles.packs}>
+                  {packs.map((pack) => (
+                    <Pressable
+                      key={pack.id}
+                      onPress={() => onBuyCredits(pack.id)}
+                      disabled={busy}
+                      style={({ pressed }) => [styles.pack, pressed && { opacity: 0.75 }]}
+                    >
+                      <Text style={styles.packCredits}>
+                        {(pack.credits ?? 0).toLocaleString('en-US')}
+                      </Text>
+                      <Text style={styles.packLabel}>scans</Text>
+                      <Text style={styles.packPrice}>{pack.price}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <Button label="Not available yet" onPress={() => {}} disabled />
+              )}
             </View>
           ) : null}
 
@@ -253,6 +277,14 @@ const styles = StyleSheet.create({
   point: { flexDirection: 'row', alignItems: 'center', gap: s.sm },
   pointText: { ...t.meta, color: c.text },
 
+  packs: { flexDirection: 'row', gap: s.sm },
+  pack: {
+    flex: 1, alignItems: 'center', paddingVertical: s.md, borderRadius: r.md,
+    backgroundColor: c.surfaceHi, borderWidth: 1, borderColor: c.line,
+  },
+  packCredits: { ...t.title, color: c.text },
+  packLabel: { ...t.tiny, color: c.faint, marginTop: -2 },
+  packPrice: { ...t.money, color: c.accent, marginTop: 5 },
   pending: { ...t.tiny, color: c.faint, textAlign: 'center', lineHeight: 15 },
   restore: { paddingVertical: s.md, alignItems: 'center' },
   restoreText: { ...t.meta, color: c.dim },

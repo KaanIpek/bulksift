@@ -53,7 +53,10 @@ import {
 import Paywall, { type PaywallReason } from './src/Paywall';
 import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
-import { adsAvailable, restore, showRewardedAd, storeState, subscribe } from './src/store';
+import {
+  adsAvailable, buy, configure as configureStore, currentPro, products as storeProducts,
+  restore, showRewardedAd, storeState, subscribe, type Product,
+} from './src/store';
 import { record, type Point } from './src/history';
 import { loadEngine, type LoadedEngine } from './src/engine';
 import {
@@ -103,6 +106,9 @@ export default function App() {
    */
   const [priceState, setPriceState] = useState<PriceState>({ updated: '', checkedAt: 0 });
   const [refreshing, setRefreshing] = useState(false);
+  /** Packs on sale, and whether a purchase is in flight. */
+  const [packs, setPacks] = useState<Product[]>([]);
+  const [buying, setBuying] = useState(false);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [setFilter, setSetFilter] = useState<string | null>(null);
 
@@ -172,6 +178,25 @@ export default function App() {
       })),
     [inActive],
   );
+
+  /*
+   * Start the store, and ask it once whether the subscription is active.
+   *
+   * Only the subscription is read back. A pack is granted at the moment it is
+   * bought; re-reading it here would grant it again on every launch, because a
+   * consumable stays in the purchase history forever.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    void configureStore().then(async () => {
+      if (cancelled) return;
+      const pro = await currentPro();
+      if (!cancelled && pro != null) setEnt((e) => setPro(e, pro));
+      const list = await storeProducts();
+      if (!cancelled) setPacks(list.filter((x) => x.credits));
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -584,18 +609,31 @@ export default function App() {
           if (!adsAvailable()) return;
           void showRewardedAd().then((earned) => { if (earned) setEnt(grantAd); });
         }}
-        onBuyCredits={() => { /* packs arrive with the store */ }}
+        packs={packs}
+        busy={buying}
+        onBuyCredits={(productId) => {
+          if (storeState() !== 'ready' || buying) return;
+          setBuying(true);
+          void buy(productId)
+            .then((r) => {
+              if (r.ok && r.credits) setEnt((e) => grantPack(e, r.credits!));
+              if (r.ok && r.pro != null) setEnt((e) => setPro(e, r.pro!));
+            })
+            .finally(() => setBuying(false));
+        }}
         onSubscribe={() => {
-          if (storeState() !== 'ready') return;
-          void subscribe().then((r) => { if (r.ok && r.pro) setEnt((e) => setPro(e, true)); });
+          if (storeState() !== 'ready' || buying) return;
+          setBuying(true);
+          void subscribe()
+            .then((r) => { if (r.ok && r.pro) setEnt((e) => setPro(e, true)); })
+            .finally(() => setBuying(false));
         }}
         onRestore={() => {
-          void restore().then((r) => {
-            if (r.ok) {
-              if (r.pro != null) setEnt((e) => setPro(e, r.pro!));
-              if (r.credits) setEnt((e) => grantPack(e, r.credits!));
-            }
-          });
+          if (buying) return;
+          setBuying(true);
+          void restore()
+            .then((r) => { if (r.ok && r.pro != null) setEnt((e) => setPro(e, r.pro!)); })
+            .finally(() => setBuying(false));
         }}
       />
 
