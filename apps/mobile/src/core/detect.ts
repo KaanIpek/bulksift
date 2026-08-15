@@ -997,6 +997,27 @@ export function scaleQuad(q: Quad, frac: number): Quad {
   })) as Quad;
 }
 
+/**
+ * Move and scale a quad in one step: translate by (dx, dy) pixels, then grow or
+ * shrink by `frac` about the centre.
+ *
+ * Translation is here because it turned out to matter more than scale, which is
+ * not what the original calibration assumed. With each corner 3% of the card's
+ * width out of place, searching scale alone recovers 4 bits of margin; searching
+ * translation recovers 26. A crop that is the right size in the wrong place
+ * describes the wrong part of the card, and every section of the descriptor
+ * degrades together - which is exactly the signature the device reported.
+ */
+export function nudgeQuad(q: Quad, dx: number, dy: number, frac: number): Quad {
+  if (dx === 0 && dy === 0 && frac === 0) return q;
+  const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4;
+  const cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
+  return [0, 1, 2, 3].map((i) => ({
+    x: cx + (q[i].x - cx) * (1 + frac) + dx,
+    y: cy + (q[i].y - cy) * (1 + frac) + dy,
+  })) as Quad;
+}
+
 /** Rotate a rectified RGBA buffer 180 degrees, for upside-down cards. */
 export function rotate180(buf: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray {
   const out = new Uint8ClampedArray(buf.length);

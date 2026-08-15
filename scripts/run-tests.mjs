@@ -85,6 +85,11 @@ const SUITE = [
     needs: ['scan_frames.bin'],
     make: 'python tools/export_scan_fixtures.py',
   },
+  {
+    name: 'sleeve',
+    needs: ['scan_frames.bin', 'scan_meta.json'],
+    make: 'python tools/export_scan_fixtures.py',
+  },
   // The device-side tests. They need no fixtures, and they cover the two things
   // that were only ever wrong on a phone: how camera bytes are laid out, and
   // what may cross the worklet boundary.

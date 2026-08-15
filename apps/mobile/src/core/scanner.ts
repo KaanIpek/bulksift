@@ -9,7 +9,7 @@
 
 import { CANON_H, CANON_W, describe, describeStrip } from './descriptor.ts';
 import {
-  detectCard, rectifyFrom, rotate180, sameView, scaleQuad, sourceOf,
+  detectCard, nudgeQuad, rectifyFrom, rotate180, sameView, sourceOf,
   type Component, type Detection, type LumaSource, type PixelSource, type Quad,
   type WorkImage,
 } from './detect.ts';
@@ -75,6 +75,59 @@ const NAME_MARGIN_K = 16;
 const VOTE_FRAMES = 5;
 
 /**
+ * How far two descriptors may sit apart and still be voted together.
+ *
+ * The obvious test - `sameView`, which the reuse path uses - is wrong here, and
+ * wrong in a way that is easy to miss: it compares block BRIGHTNESS, and glare
+ * is a change in brightness. It therefore rejected precisely the frames the
+ * vote exists to combine, and the ring sat at a depth of one on every shiny
+ * card. It looked implemented and did nothing.
+ *
+ * Geometry alone will not do either. Two cards laid on the same spot of the
+ * same table have the same quad, and voting across those averages two cards
+ * into neither.
+ *
+ * The descriptors themselves answer it, because the two populations do not
+ * overlap. Over 30 fixture cards, with the highlight in a different place on
+ * every read (`_drift.ts`):
+ *
+ *   glare   same card min/mean/max   different cards min/mean/max
+ *    50%          20 /  61 / 115            233 / 352 / 472
+ *    75%          24 /  75 / 126            245 / 354 / 479
+ *    90%          17 /  87 / 148            226 / 352 / 449
+ *
+ * 148 against 226 at the worst glare measured, so 180 sits in the gap with
+ * room on both sides. Below it the frames are the same card seen differently;
+ * above it they are different cards and the ring starts again.
+ */
+const VOTE_MAX_DRIFT = 180;
+
+/** Bits set in a byte, for the small distance the vote needs. */
+const BITS_SET = new Uint8Array(256);
+for (let i = 0; i < 256; i++) BITS_SET[i] = (i & 1) + BITS_SET[i >> 1];
+
+function hamming(a: Uint8Array, b: Uint8Array): number {
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d += BITS_SET[a[i] ^ b[i]];
+  return d;
+}
+
+/**
+ * Blank frames in a row before the voting ring is thrown away.
+ *
+ * Not one. A card under a lamp loses its edge to the highlight every few
+ * frames, the detector finds nothing, and the presentation ends - so keying the
+ * ring on that emptied it constantly on exactly the shiny cards it was built
+ * for. Measured at 90% glare the ring never got past a mean depth of 0.9.
+ *
+ * It cannot be large either: between two cards laid on the same spot the quads
+ * are nearly identical, so `sameView` will not tell them apart and the gap is
+ * the only thing that does. Two frames is longer than a dropout and shorter
+ * than a hand swapping a card.
+ */
+const VOTE_GAP = 2;
+
+/**
  * Per-bit majority over several descriptors of the same view.
  *
  * With an odd count there is no tie to break. With an even one a tie falls to
@@ -121,7 +174,89 @@ const FOOTER_BAND = 90;
  */
 const CALIBRATE_EVERY = 8;
 const CALIBRATE_STEP = 0.02;
-const CALIBRATE_LIMIT = 0.08;
+const CALIBRATE_LIMIT = 0.15;
+
+/**
+ * Frames without a single accepted read before the crop search goes looking.
+ *
+ * There are two situations and they deserve different budgets. When cards are
+ * reading, calibration is a slow trim and can afford to be rare and fine.
+ * When nothing has read for a second, something is wrong with the crop - a
+ * sleeve, a phone at an unusual height - and there is nothing to protect: no
+ * card is being committed, so the frames are free. It calibrates on every one
+ * of them, and in coarser steps, until something reads again.
+ *
+ * Without this the search converges at about one step per sixteen frames, and
+ * a card is only in view for ten - so a sleeve took dozens of cards to correct,
+ * which is dozens of cards the user watched fail.
+ */
+const HUNT_AFTER = 20;
+const HUNT_STEP = 0.04;
+
+/**
+ * Axes that must pass without moving before the crop is called settled.
+ *
+ * "Something read, so stop searching" is the wrong stopping rule and measurably
+ * so: with a 5% sleeve a few cards would read at a half-corrected crop, the
+ * search would drop back to its slow trim, and the remaining error stayed -
+ * 24 of 40. With an 8% sleeve nothing read at all, the search ran to the end,
+ * and 27 of 40 came back with a much better margin. Being worse at the easier
+ * setting is the signature of stopping early.
+ *
+ * So it runs until a full sweep of all three axes wants no correction, and only
+ * then goes quiet.
+ */
+const SETTLE_SWEEP = 3;
+
+/**
+ * How far the crop may be nudged sideways, as a fraction of the card's width.
+ *
+ * Separate from the scale limit because it is a different kind of error. Scale
+ * drift is a disagreement about where the card ends - the detector finds the
+ * physical edge, the reference images were cropped by whoever scanned them.
+ * Translation drift is the detector being wrong about WHERE the card is, and it
+ * is the more expensive of the two by a factor of six.
+ */
+const OFFSET_LIMIT = 0.10;
+
+/**
+ * Bits a nudged crop must win by before it is adopted.
+ *
+ * Without it the calibration chases glare. A highlight moves between frames, so
+ * on any given frame SOME nudge crops away from it and scores a few bits
+ * better; taking that reads the card at an offset chosen by a reflection, and
+ * it cost 5 of 40 fixture cards at 75% glare while the standing crop stayed at
+ * zero - the damage was entirely in the trial frames.
+ *
+ * A real misalignment is not a few bits. At 3% corner error the right crop wins
+ * by tens, so a threshold that ignores small wins loses nothing that matters
+ * and ignores the noise.
+ */
+const CALIBRATE_GAIN = 8;
+
+/**
+ * Calibration rounds that must agree before the crop is moved.
+ *
+ * This is what separates a misaligned card from an empty desk, and it replaced
+ * a rule that could not tell them apart. Refusing to learn except from reads
+ * that already pass the gate does stop the desk - but it also stops the sleeve,
+ * because a card whose crop is 5% wrong never passes the gate either, so the
+ * scanner could only correct an error small enough not to matter. Sleeved cards
+ * scored 5 of 40 under it.
+ *
+ * Direction is the discriminator instead. A crop that is genuinely offset wants
+ * the same nudge on every round; a desk wants whichever nudge happened to match
+ * something this time, and that is a different one each round. Two rounds in a
+ * row is enough to tell those apart and costs sixteen frames.
+ */
+const CALIBRATE_AGREE = 2;
+
+/** The three things the crop is calibrated on, one axis at a time. */
+const CROP_AXES = ['dx', 'dy', 'scale'] as const;
+type CropAxis = (typeof CROP_AXES)[number];
+
+/** A standing correction to the detector's quad. */
+interface Crop { dx: number; dy: number; scale: number }
 
 /**
  * A native rectify-and-describe, when one is available.
@@ -154,6 +289,26 @@ export interface FrameResult {
   nameMargin?: number;
   /** Per-section disagreement for the winning read, for on-device diagnosis. */
   sections?: Array<{ name: string; d: number; of: number }>;
+  /**
+   * How many frames the multi-frame vote had to work with on this one.
+   *
+   * Reported because the vote is worth nothing at a depth of one, and the first
+   * version of it sat at one forever on the device without saying so: it keyed
+   * its ring on a field that a refused frame clears, and nine device frames in
+   * ten are refused. A feature that silently does nothing is worse than no
+   * feature, so the depth is now on the screen next to the distance it moves.
+   */
+  voteFrames?: number;
+  /**
+   * The standing crop correction, as percentages of the card's width.
+   *
+   * On the screen because it is learned rather than configured, and a number
+   * that is learned on the device can only be checked on the device. A session
+   * that converges on a large offset is saying the detector is systematically
+   * wrong about where the card is, which is worth knowing and is invisible
+   * from a desktop.
+   */
+  crop?: { dx: number; dy: number; scale: number };
 }
 
 function variantsOf(prices: CardPrices | undefined): PricedVariant[] {
@@ -250,13 +405,53 @@ export class Scanner {
    * away the bits it covers, and this throws away nothing.
    */
   private recent: Uint8Array[] = [];
+  /**
+   * The quad the voting ring's descriptors were taken from.
+   *
+   * Deliberately NOT `lastDetection`, which is cleared whenever a read is
+   * refused. On the device nine frames in ten are refused - that is the whole
+   * problem being solved - so keying the ring on it emptied the ring on almost
+   * every frame and the vote never reached three descriptors. It was dead code
+   * exactly where it was needed, which is the most expensive kind.
+   *
+   * This one follows the geometry and nothing else, so a run of unrecognisable
+   * frames of a card that is sitting still still accumulates.
+   */
+  /** Consecutive frames with no card in them. */
+  private blankRun = 0;
   /** Footer of the last recognised card, kept only when it was a near-tie. */
   private lastStrip: Uint8Array | null = null;
   /** Consecutive frames answered from `lastResult` without recognising again. */
   private reusedRun = 0;
   /** Standing correction between the detected card edge and the reference crop. */
-  private scaleBias = 0;
+  /**
+   * The standing correction applied to every quad the detector returns.
+   *
+   * It survives from card to card on purpose. This is a property of the setup -
+   * the lens, the height the phone is propped at, whatever bias the detector
+   * has against these particular edges - not of the card in front of it, so
+   * throwing it away between cards would mean re-learning it every time and
+   * never converging during the second or so a card is actually held there.
+   */
+  private crop: Crop = { dx: 0, dy: 0, scale: 0 };
+  /**
+   * Which axis the next calibration frame refines.
+   *
+   * Three axes searched one at a time rather than all at once: the full grid is
+   * 27 rectify-and-search rounds, which does not fit in a frame, while
+   * coordinate descent costs the same three rounds the scale-only search
+   * already cost and reaches the same place a few frames later. Since the crop
+   * persists across cards, those frames are paid once for a session, not once
+   * per card.
+   */
+  private calibAxis = 0;
+  /** The nudge the last calibration round wanted, and how often in a row. */
+  private pending: { axis: CropAxis; dir: number; count: number } | null = null;
   private sinceCalibration = CALIBRATE_EVERY;
+  /** Frames since any read passed the acceptance gate. */
+  private sinceAccept = 0;
+  /** Consecutive axes that asked for no correction. */
+  private settled = SETTLE_SWEEP;
   /** The sharpest read seen since the current streak began. */
   private streakBest: {
     result: MatchResult; query: Uint8Array; strip: Uint8Array | null;
@@ -342,6 +537,8 @@ export class Scanner {
     this.missFrames = 0;
     this.frameNo = 0;
     this.preferFlipped = false;
+    this.sinceAccept = 0;
+    this.clearVote();
     this.lastDetection = null;
     this.lastResult = null;
     this.lastQuery = null;
@@ -349,7 +546,9 @@ export class Scanner {
     this.lastStrip = null;
     this.reusedRun = 0;
     this.streakBest = null;
-    this.scaleBias = 0;
+    this.crop = { dx: 0, dy: 0, scale: 0 };
+    this.calibAxis = 0;
+    this.pending = null;
     this.sinceCalibration = CALIBRATE_EVERY;
     this.lastEmitFrame.clear();
   }
@@ -387,6 +586,8 @@ export class Scanner {
     timings.detect = performance.now() - tDetect;
 
     if (!detection) {
+      this.blankRun++;
+      if (this.blankRun >= VOTE_GAP) this.clearVote();
       this.endOfPresentation();
       timings.total = performance.now() - tDetect;
       return { detection: null, hit: null, preview: null, timings };
@@ -421,8 +622,16 @@ export class Scanner {
      * reference the C++ was checked against, and it runs whenever nothing
      * native answered.
      */
-    const describeAt = (bias: number, flip: boolean) => {
-      const q = scaleQuad(detection.quad, bias);
+    // The card's width in frame pixels, so an offset can be expressed as a
+    // fraction of the card rather than of the sensor - the same nudge has to
+    // mean the same thing whether the phone is high or low over the table.
+    const span = Math.hypot(
+      detection.quad[1].x - detection.quad[0].x,
+      detection.quad[1].y - detection.quad[0].y,
+    ) || 1;
+
+    const describeAt = (crop: Crop, flip: boolean) => {
+      const q = nudgeQuad(detection.quad, crop.dx * span, crop.dy * span, crop.scale);
       if (describer) {
         const got = describer(q, flip);
         if (got) return { desc: got.desc, strip: got.strip, canonical: null };
@@ -441,48 +650,108 @@ export class Scanner {
     // together, both of which turned out to cost almost nothing. So the cut is
     // calibrated instead of assumed: every so often the frame is rectified at
     // three scales and the one that matches best becomes the standing bias.
-    const calibrating = this.sinceCalibration >= CALIBRATE_EVERY;
-    const biases = calibrating
-      ? [this.scaleBias - CALIBRATE_STEP, this.scaleBias, this.scaleBias + CALIBRATE_STEP]
-      : [this.scaleBias];
+    // Nothing has read for a while: the crop is the likeliest reason, and a
+    // frame that commits nothing costs nothing to spend on finding out.
+    if (this.sinceAccept >= HUNT_AFTER) this.settled = 0;
+    const searching = this.settled < SETTLE_SWEEP;
+    const step = this.sinceAccept >= HUNT_AFTER ? HUNT_STEP : CALIBRATE_STEP;
+    const calibrating = searching || this.sinceCalibration >= CALIBRATE_EVERY;
+    const axis: CropAxis = CROP_AXES[this.calibAxis % CROP_AXES.length];
+    const limit = axis === 'scale' ? CALIBRATE_LIMIT : OFFSET_LIMIT;
+    const at = (v: number): Crop => ({ ...this.crop, [axis]: v });
     this.sinceCalibration = calibrating ? 0 : this.sinceCalibration + 1;
 
-    let read = describeAt(biases[0], this.preferFlipped);
+    let read = describeAt(this.crop, this.preferFlipped);
     let qa = read.desc;
     timings.describe = performance.now() - tDesc;
 
+    /*
+     * Refine the crop, one axis per calibration frame.
+     *
+     * Two rules keep this from making things worse, and both were put there by
+     * a measurement that caught it doing so:
+     *
+     *  - The trial descriptors never become the frame's read. A highlight moves
+     *    between frames, so on any given frame some nudge crops away from it
+     *    and scores a few bits better; adopting that read the card at an offset
+     *    chosen by a reflection, and cost 5 of 40 fixture cards at 75% glare.
+     *    The trials decide the crop and nothing else.
+     *
+     *  - The same nudge has to win CALIBRATE_AGREE rounds in a row. A desk
+     *    under a lamp will always offer SOME nudge that matches something, but
+     *    not the same one twice; a card that really is cropped wrong asks for
+     *    the same correction every time.
+     */
     if (calibrating) {
       const tCal = performance.now();
-      let bestBias = biases[0];
-      let bestD = this.index.search(qa).best.distance;
-      for (let i = 1; i < biases.length; i++) {
-        const trial = describeAt(biases[i], this.preferFlipped);
+      const baseD = this.index.search(qa).best.distance;
+      let wantDir = 0;
+      let wantD = baseD;
+      for (const dir of [-1, 1]) {
+        const trial = describeAt(at(this.crop[axis] + dir * step), this.preferFlipped);
         const d = this.index.search(trial.desc).best.distance;
-        if (d < bestD) {
-          bestD = d;
-          bestBias = biases[i];
-          read = trial;
-          qa = trial.desc;
+        if (d < wantD && baseD - d >= CALIBRATE_GAIN) {
+          wantD = d;
+          wantDir = dir;
         }
       }
-      this.scaleBias = Math.max(-CALIBRATE_LIMIT, Math.min(CALIBRATE_LIMIT, bestBias));
+
+      if (wantDir === 0) {
+        this.pending = null;
+      } else if (this.pending && this.pending.axis === axis && this.pending.dir === wantDir) {
+        this.pending.count++;
+      } else {
+        this.pending = { axis, dir: wantDir, count: 1 };
+      }
+
+      if (this.pending && this.pending.count >= CALIBRATE_AGREE) {
+        const moved = this.crop[axis] + this.pending.dir * step;
+        this.crop = { ...this.crop, [axis]: Math.max(-limit, Math.min(limit, moved)) };
+        this.pending = null;
+        // Re-read at the crop that was just adopted, so the frame that paid for
+        // the correction is also the first to benefit from it.
+        read = describeAt(this.crop, this.preferFlipped);
+        qa = read.desc;
+      }
+
+      /*
+       * Stay on this axis until it has nothing more to offer.
+       *
+       * Advancing every round, which is what this did first, makes the
+       * agreement rule unsatisfiable: the next round is on a different axis, so
+       * two rounds can never agree and the crop never moves at all. Sleeved
+       * cards sat at 5 of 40 with the calibration silently doing nothing.
+       *
+       * An axis is finished when no nudge along it wins by enough. Then the
+       * next one starts, and one full sweep of the three is one pass of
+       * coordinate descent.
+       */
+      if (wantDir === 0) {
+        this.calibAxis++;
+        this.settled++;
+      } else {
+        this.settled = 0;
+      }
       timings.describe += performance.now() - tCal;
     }
 
     /*
-     * Keep this frame's descriptor with the last few of the same view, and
+     * Keep this frame's descriptor with the last few of the same card, and
      * search with their majority rather than with this frame alone.
      *
-     * The ring is cleared whenever the card moves enough that the frames are no
-     * longer of the same pose, because voting across two different geometries
-     * averages two different cards into neither of them. `sameView` is the same
-     * test the reuse path uses, and it is about the quad rather than the match,
-     * so it does not depend on the answer this is trying to improve.
+     * A card under a lamp does not carry its highlight in the same place from
+     * one frame to the next - the hand moves, the card tilts, the band slides
+     * across it - so the bits glare corrupts differ each time while the bits it
+     * misses do not. A per-bit majority recovers a read that no single frame
+     * contains.
+     *
+     * Whether two frames belong together is decided by how far their
+     * descriptors sit apart, which is measured rather than assumed: see
+     * VOTE_MAX_DRIFT.
      */
-    if (!this.lastDetection
-        || !sameView(this.lastDetection, detection, REUSE_SIZE_TOL, REUSE_LEVEL)) {
-      this.recent.length = 0;
-    }
+    const drift = this.recent.length ? hamming(qa, this.recent[this.recent.length - 1]) : 0;
+    if (drift > VOTE_MAX_DRIFT) this.recent.length = 0;
+    this.blankRun = 0;
     this.recent.push(qa);
     if (this.recent.length > VOTE_FRAMES) this.recent.shift();
     const voted = this.recent.length >= 3 ? majority(this.recent) : qa;
@@ -496,7 +765,7 @@ export class Scanner {
 
     if (result.best.index < 0 || result.best.distance > this.config.maxDistance) {
       const t2 = performance.now();
-      const other = describeAt(this.scaleBias, !this.preferFlipped);
+      const other = describeAt(this.crop, !this.preferFlipped);
       timings.describe += performance.now() - t2;
       const t3 = performance.now();
       const rb = this.index.search(other.desc);
@@ -533,10 +802,15 @@ export class Scanner {
       this.lastDetection = null;
       this.lastResult = null;
       this.missFrames++;
+      this.sinceAccept++;
       if (this.missFrames >= this.config.clearFrames) this.endOfPresentation();
-      return { detection, hit: null, preview: null, timings, nameMargin: margin };
+      return {
+        detection, hit: null, preview: null, timings,
+        nameMargin: margin, voteFrames: this.recent.length, crop: this.crop,
+      };
     }
     this.missFrames = 0;
+    this.sinceAccept = 0;
 
     // Always read the footer of an accepted card. It covers 36 rows against the
     // descriptor's 336, so it costs about a tenth of a describe - far too little
@@ -569,7 +843,19 @@ export class Scanner {
     this.emittedThisPass.clear();
     this.streakBest = null;
     this.missFrames = 0;
+  }
+
+  /**
+   * Forget the voted frames.
+   *
+   * Deliberately separate from `endOfPresentation`, which runs the moment the
+   * detector comes up empty. Those two events are not the same: the card having
+   * gone ends a presentation, but so does one frame where a highlight swallowed
+   * the card's edge, and the second must not cost the frames already collected.
+   */
+  private clearVote(): void {
     this.recent.length = 0;
+    this.blankRun = 0;
   }
 
   /**
@@ -714,7 +1000,10 @@ export class Scanner {
       !this.emittedThisPass.has(result.best.index) &&
       this.frameNo - lastSeen >= cooldown;
     if (!confirmed) {
-      return { detection, hit: null, preview, timings, sections, nameMargin };
+      return {
+        detection, hit: null, preview, timings, sections, nameMargin,
+        voteFrames: this.recent.length, crop: this.crop,
+      };
     }
 
     this.emittedIndex = this.streakIndex;
@@ -742,6 +1031,8 @@ export class Scanner {
       timings,
       sections,
       nameMargin,
+      voteFrames: this.recent.length,
+      crop: this.crop,
     };
   }
 

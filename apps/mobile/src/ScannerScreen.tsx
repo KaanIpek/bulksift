@@ -156,6 +156,8 @@ export default function ScannerScreen({
     frames: 0, detected: 0, matched: 0, bestDistance: -1, margin: -1, refused: 0,
     pack: 0, detect: 0, describe: 0, search: 0, reused: 0, shownAt: 0,
     sections: '' ,
+    vote: 0,
+    crop: '',
   });
   const [scanning, setScanning] = useState(true);
   /**
@@ -284,6 +286,14 @@ export default function ScannerScreen({
         st.margin = result.nameMargin;
       }
       if (result.detection && !result.preview) st.refused++;
+      // How deep the multi-frame vote got. One means it is doing nothing.
+      if (result.voteFrames != null) st.vote = Math.max(st.vote, result.voteFrames);
+      // What the crop calibration has settled on. Learned on the device, so it
+      // can only be read on the device.
+      if (result.crop) {
+        const pc = (v: number) => `${v >= 0 ? '+' : ''}${Math.round(v * 100)}`;
+        st.crop = `${pc(result.crop.dx)}/${pc(result.crop.dy)}/${pc(result.crop.scale)}`;
+      }
       // Which part of the descriptor disagrees says why a read is poor -
       // colour alone means channels, art alone means alignment, all four alike
       // means optics. Shown as a percentage so the four are comparable.
@@ -314,6 +324,8 @@ export default function ScannerScreen({
           (st.bestDistance >= 0 ? ` · d=${st.bestDistance}` : '') +
           (st.margin >= 0 ? ` m=${st.margin}` : '') +
           (st.refused ? ` · refused ${st.refused}` : '') +
+          (st.vote ? ` · vote ${st.vote}` : '') +
+          (st.crop ? ` · crop ${st.crop}` : '') +
           ` · pack ${ms(st.pack)} detect ${ms(st.detect)} desc ${ms(st.describe)} ` +
           `search ${ms(st.search)} ms · reused ${Math.round((st.reused / n) * 100)}%` +
           (st.sections ? ` · ${st.sections}` : ''),
