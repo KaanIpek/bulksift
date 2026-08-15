@@ -48,7 +48,14 @@ function Row({
         {label}
       </Text>
       <View style={styles.rowRight}>
-        {value ? <Text style={styles.rowValue}>{value}</Text> : null}
+        {/*
+          * Values are usually a word - "Free", "Pro", a date - but a sync
+          * failure arrives here as a whole sentence from the server. Without a
+          * shrink and a line cap that sentence pushes the label off the row.
+          */}
+        {value ? (
+          <Text style={styles.rowValue} numberOfLines={1}>{value}</Text>
+        ) : null}
         {onPress ? <ChevronIcon size={14} color={c.faint} /> : null}
       </View>
     </View>
@@ -375,8 +382,8 @@ const styles = StyleSheet.create({
   },
   rowLast: { borderBottomWidth: 0 },
   rowLabel: { ...t.body, color: c.text, flexShrink: 1 },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  rowValue: { ...t.meta, color: c.dim },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+  rowValue: { ...t.meta, color: c.dim, flexShrink: 1, textAlign: 'right' },
   input: {
     backgroundColor: c.bg,
     borderWidth: 1,

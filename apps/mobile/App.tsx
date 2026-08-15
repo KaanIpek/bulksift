@@ -301,6 +301,24 @@ export default function App() {
   }, [library, bases, syncing, loaded]);
 
   /*
+   * The latest `runSync`, reachable from a listener that outlives it.
+   *
+   * `runSync` closes over the collection, so it is a different function on
+   * every scan - several times a second during a bulk session. A listener
+   * registered once therefore holds the version from the moment it was
+   * registered, which is app launch, and would sync the collection as it was
+   * then: an evening of scanning would not be pushed at all, and against a
+   * server that already had some of those cards the stale base would subtract
+   * them. Re-registering instead would tear the listener down and rebuild it
+   * several times a second.
+   *
+   * A ref is the way out of that pair: one listener, always the current
+   * function.
+   */
+  const syncRef = useRef(runSync);
+  syncRef.current = runSync;
+
+  /*
    * Sync when the app is opened and whenever it comes back to the front.
    *
    * Not on every change: a bulk session touches hundreds of piles a minute and
@@ -312,16 +330,12 @@ export default function App() {
     if (!loaded) return;
     let cancelled = false;
     void restoreSession().then(() => {
-      if (!cancelled) void runSync(false);
+      if (!cancelled) void syncRef.current(false);
     });
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void runSync(false);
+      if (state === 'active') void syncRef.current(false);
     });
     return () => { cancelled = true; sub.remove(); };
-    // Deliberately not depending on `runSync`: it changes identity whenever the
-    // collection does, which during a scan is several times a second, and each
-    // change would tear down and re-add the listener.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
   const variantsFor = useCallback(
