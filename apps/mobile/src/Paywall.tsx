@@ -25,7 +25,8 @@ import { Badge, Button } from './ui/parts';
 import { c, r, s, shadow, t } from './ui/theme';
 
 /** Why the paywall opened, so it can lead with the relevant thing. */
-export type PaywallReason = 'out-of-scans' | 'collections' | 'export' | 'browse';
+export type PaywallReason =
+  | 'out-of-scans' | 'collections' | 'export' | 'browse' | 'settings';
 
 const HEADLINE: Record<PaywallReason, { title: string; sub: string }> = {
   'out-of-scans': {
@@ -41,6 +42,12 @@ const HEADLINE: Record<PaywallReason, { title: string; sub: string }> = {
     sub: 'A CSV of everything you own, priced, ready to list.',
   },
   browse: {
+    title: 'BulkSift Pro',
+    sub: 'Unlimited scanning, unlimited collections, and export.',
+  },
+  // Opened deliberately from Settings rather than by hitting a wall, so it
+  // leads with what Pro is instead of with what just stopped working.
+  settings: {
     title: 'BulkSift Pro',
     sub: 'Unlimited scanning, unlimited collections, and export.',
   },

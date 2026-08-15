@@ -22,6 +22,8 @@
 
 import { Platform } from 'react-native';
 
+import { adsSdk } from './native';
+
 /**
  * The AdMob rewarded unit.
  *
@@ -50,7 +52,8 @@ function sdk(): AdsModule | null {
   if (Platform.OS === 'web' || !REWARDED_UNIT_ID) return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-    mod = require('react-native-google-mobile-ads') as AdsModule;
+    mod = adsSdk<AdsModule>();
+    if (!mod) return null;
     return mod;
   } catch {
     return null;

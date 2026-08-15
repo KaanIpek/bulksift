@@ -19,6 +19,8 @@
 
 import { Platform } from 'react-native';
 
+import { appleAuthSdk } from './native';
+
 /** Where the project lives. Null until one exists; everything degrades. */
 export const SUPABASE_URL: string | null = null;
 export const SUPABASE_ANON_KEY: string | null = null;
@@ -115,7 +117,8 @@ export async function signInWithApple(): Promise<AuthResult> {
   if (Platform.OS !== 'ios') return { ok: false, reason: 'Only on iOS.' };
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-    const apple = require('expo-apple-authentication');
+    const apple = appleAuthSdk<any>();
+    if (!apple) return { ok: false, reason: NOT_CONFIGURED };
     const credential = await apple.signInAsync({
       requestedScopes: [
         apple.AppleAuthenticationScope.FULL_NAME,

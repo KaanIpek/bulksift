@@ -353,3 +353,38 @@ export function ShareIcon({ size = 18, color = c.dim }: IconProps) {
     </View>
   );
 }
+
+/**
+ * Settings, as a slider panel rather than a gear.
+ *
+ * A gear at 22px turns into a fuzzy circle: its teeth are under a pixel and
+ * anti-aliasing smears them together. That is the same trap the star icon fell
+ * into before it became a heart, and it is worth avoiding twice. Three sliders
+ * stay legible because every stroke is axis-aligned and at least a pixel wide.
+ */
+export function SettingsIcon({ size = 22, color = c.text, strong }: IconProps) {
+  const w = strong ? 2.3 : 1.8;
+  const knob = size * 0.26;
+  // Track y, and where the knob sits along it. Staggering the knobs is what
+  // makes this read as controls rather than as a list.
+  const rows: Array<[number, number]> = [[0.24, 0.66], [0.5, 0.3], [0.76, 0.55]];
+  return (
+    <View style={box(size)}>
+      {rows.map(([y, x]) => (
+        <View key={y}>
+          <View style={{
+            position: 'absolute', top: size * y - w / 2, left: size * 0.1,
+            width: size * 0.8, height: w, borderRadius: w, backgroundColor: color,
+          }} />
+          <View style={{
+            position: 'absolute',
+            top: size * y - knob / 2,
+            left: size * x - knob / 2,
+            width: knob, height: knob, borderRadius: knob,
+            borderWidth: w, borderColor: color, backgroundColor: c.bg,
+          }} />
+        </View>
+      ))}
+    </View>
+  );
+}

@@ -51,6 +51,8 @@ import {
   type Collection, type Library,
 } from './src/library';
 import Paywall, { type PaywallReason } from './src/Paywall';
+import SettingsScreen from './src/SettingsScreen';
+import { runSelfTest } from './src/selfTest';
 import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
 import {
@@ -60,14 +62,15 @@ import {
 import { record, type Point } from './src/history';
 import { loadEngine, type LoadedEngine } from './src/engine';
 import {
-  CollectionIcon, ScanIcon, SearchIcon, SetsIcon, type IconProps,
+  CollectionIcon, ScanIcon, SearchIcon,
+  SettingsIcon, SetsIcon, type IconProps,
 } from './src/ui/icons';
 import {
   ScanFeed, ScanOverlay, ScanSummary, ScanViewport, type ScannedRow,
 } from './src/ui/ScanChrome';
 import { c, r, s, shadow, t } from './src/ui/theme';
 
-type Tab = 'scan' | 'collection' | 'sets' | 'browse';
+type Tab = 'scan' | 'collection' | 'sets' | 'browse' | 'settings';
 
 const TABS: Array<{
   id: Tab; label: string; Icon: (p: IconProps) => React.ReactElement;
@@ -76,6 +79,7 @@ const TABS: Array<{
   { id: 'collection', label: 'Collection', Icon: CollectionIcon },
   { id: 'sets', label: 'Sets', Icon: SetsIcon },
   { id: 'browse', label: 'Browse', Icon: SearchIcon },
+  { id: 'settings', label: 'Settings', Icon: SettingsIcon },
 ];
 
 export default function App() {
@@ -95,6 +99,16 @@ export default function App() {
   const [ent, setEnt] = useState<Entitlement>(() => fresh(Date.now()));
   const [loaded, setLoaded] = useState(false);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
+  /*
+   * The engine self-test, run from Settings.
+   *
+   * It lives up here rather than inside the screen because it needs the loaded
+   * engine, and because App Review has to be able to reach it in a release
+   * build - it used to run only under __DEV__, which meant the one audience
+   * that cannot test this app with real cards was also the one audience that
+   * could not run it.
+   */
+  const [selfTest, setSelfTest] = useState<string[] | null>(null);
   const [adding, setAdding] = useState<AddTarget | null>(null);
   /**
    * The price book actually in use, and when it was last checked.
@@ -570,6 +584,28 @@ export default function App() {
               setAdding({ card, variants: variantsFor(card.i) })}
             wishedIds={wishedIds}
             onWish={(card, price) => setWishlist((prev) => toggleWish(prev, card, price))}
+          />
+        ) : null}
+        {tab === 'settings' ? (
+          <SettingsScreen
+            ent={ent}
+            priceUpdated={priceState.updated}
+            onRefreshPrices={() => void refreshPrices(true)}
+            refreshing={refreshing}
+            onOpenPaywall={() => setPaywall('settings')}
+            onProChanged={(pro) => setEnt((e) => setPro(e, pro))}
+            onRunSelfTest={() => {
+              if (!engine) return;
+              setSelfTest(['running…']);
+              void runSelfTest(engine.scanner)
+                .then((r) => setSelfTest([
+                  `engine self-test: ${r.correct}/${r.total} correct`, ...r.lines,
+                ]))
+                .catch((err: unknown) => setSelfTest([
+                  `self-test failed: ${String((err as Error)?.message ?? err)}`,
+                ]));
+            }}
+            selfTest={selfTest}
           />
         ) : null}
       </View>

@@ -27,6 +27,8 @@
 
 import { Platform } from 'react-native';
 
+import { purchasesSdk } from './native';
+
 /** How many scans each consumable pack grants. Keyed by product identifier. */
 export const CREDIT_PACKS: Record<string, number> = {
   'com.rldgames.bulksift.credits.200': 200,
@@ -87,7 +89,8 @@ function sdk(): RC | null {
   if (Platform.OS === 'web' || !REVENUECAT_IOS_KEY) return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-    rc = require('react-native-purchases').default as RC;
+    rc = purchasesSdk<RC>();
+    if (!rc) return null;
     return rc;
   } catch {
     return null;
