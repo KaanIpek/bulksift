@@ -138,11 +138,21 @@ moved, so a refresh that finds nothing new transfers almost nothing. Uploading
 `prices.json` without updating the manifest means no device ever notices it -
 which is why `npm run prices` now writes both.
 
-## Left: a privacy policy page
+## Left: hosting the three pages
 
-Settings links to `https://bulksift.app/privacy`, which does not exist. A dead
-link there is a rejection. A single static page is enough, and it needs a
-contact route on it.
+`docs/site/` now holds `index.html`, `privacy.html` and `support.html` - plain
+files with no build step and no external requests. They need to go somewhere.
+
+App Store Connect asks for a **Privacy Policy URL** and a **Support URL**, and
+the app's Settings screen links to `https://bulksift.app/privacy`, so either
+point that domain at these files or change the link in `SettingsScreen.tsx` to
+wherever they end up. A dead link there is a rejection on its own.
+
+GitHub Pages serving `docs/` is the cheapest route that needs no new account,
+and the repo already exists. The privacy page's claims are written to match what
+the app actually does - on-device recognition, no image ever uploaded, tracking
+that changes nothing about the reward - so if that behaviour changes, the page
+has to change with it.
 
 ---
 
