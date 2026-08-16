@@ -1,5 +1,17 @@
 # Connecting the services
 
+> **CI note.** The repository is public, which is what makes the iOS build free:
+> GitHub Actions bills macOS runners at 10x minutes, so a few 11-minute builds
+> exhaust a private repo's allowance and the job then dies in five seconds with
+> a message about payments failing. That message is about quota, not a card.
+> Public repositories get unlimited macOS minutes.
+>
+> Git history was audited before the switch - no `.p8`, no `.env`, no JWT has
+> ever been committed, and the encrypted Actions secrets stay secret in a public
+> repo. The three keys in the source ship inside the app binary anyway and are
+> extractable from any IPA.
+
+
 Three of the four are **done** and their keys are in the code. What is left is
 listed at the bottom, and each remaining item needs a secret that should not
 pass through an agent's context.
