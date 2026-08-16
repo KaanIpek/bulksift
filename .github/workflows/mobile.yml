@@ -138,6 +138,31 @@ jobs:
       - name: Stage the card index into the app bundle
         run: node apps/mobile/scripts/sync-data.mjs
 
+      # Give every upload a build number Apple has not seen before.
+      #
+      # `buildNumber` in app.json is a constant, and `expo prebuild` copies it
+      # into CFBundleVersion verbatim - so every archive claimed to be build 20
+      # of version 0.1.0. altool still reports "UPLOAD SUCCEEDED", because that
+      # only means the bytes arrived; Apple rejects the duplicate later, during
+      # processing, with ITMS-90062 in an email. The build never appears in
+      # TestFlight and nothing in the CI log says why.
+      #
+      # The run number is monotonic per workflow and needs no state, so it can
+      # never collide with itself. The offset is there because TestFlight
+      # already holds builds numbered into the twenties from before this step
+      # existed, and Apple wants each upload to be HIGHER than every previous
+      # one for the same version - not merely different. Starting at 100 clears
+      # them all with room to spare.
+      #
+      # app.json is only rewritten on the runner. The committed value stays as
+      # it is, so a local build is unaffected and nothing has to be bumped by
+      # hand before a release.
+      - name: Stamp the build number
+        working-directory: apps/mobile
+        env:
+          RUN: ${{ github.run_number }}
+        run: node -e "const fs=require('fs'),p='app.json',a=JSON.parse(fs.readFileSync(p,'utf8'));a.expo.ios=a.expo.ios||{};a.expo.ios.buildNumber=String(Number(process.env.RUN)+100);fs.writeFileSync(p,JSON.stringify(a,null,2));console.log('build '+a.expo.ios.buildNumber+' of '+a.expo.version);"
+
       - name: Generate the native project
         working-directory: apps/mobile
         run: npx expo prebuild --platform ios --clean --no-install
