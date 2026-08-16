@@ -23,6 +23,7 @@ pass through an agent's context.
 | **App Store Connect products** | Done | ids match `store.ts` |
 | **RevenueCat** | Connected; 2 of 5 packages left to add | `store.ts` |
 | **Price hosting** | Not started | `pricesStore.ts` (still null) |
+| **Privacy / support pages** | Live on GitHub Pages | linked from Settings |
 
 ---
 
@@ -150,21 +151,23 @@ moved, so a refresh that finds nothing new transfers almost nothing. Uploading
 `prices.json` without updating the manifest means no device ever notices it -
 which is why `npm run prices` now writes both.
 
-## Left: hosting the three pages
+## Done: the privacy and support pages
 
-`docs/site/` now holds `index.html`, `privacy.html` and `support.html` - plain
-files with no build step and no external requests. They need to go somewhere.
+Live on GitHub Pages, served from `docs/` on `main`:
 
-App Store Connect asks for a **Privacy Policy URL** and a **Support URL**, and
-the app's Settings screen links to `https://bulksift.app/privacy`, so either
-point that domain at these files or change the link in `SettingsScreen.tsx` to
-wherever they end up. A dead link there is a rejection on its own.
+- <https://kaanipek.github.io/bulksift/> - landing
+- <https://kaanipek.github.io/bulksift/privacy.html> - **Privacy Policy URL**
+- <https://kaanipek.github.io/bulksift/support.html> - **Support URL**
 
-GitHub Pages serving `docs/` is the cheapest route that needs no new account,
-and the repo already exists. The privacy page's claims are written to match what
-the app actually does - on-device recognition, no image ever uploaded, tracking
-that changes nothing about the reward - so if that behaviour changes, the page
-has to change with it.
+Both of those go in App Store Connect, and Settings links at them from inside
+the app. It used to link at `https://bulksift.app/privacy`, a domain that was
+never bought - App Review follows that link, so a 404 there was worse than no
+link at all.
+
+The privacy page's claims are written to match what the app actually does:
+on-device recognition, no image ever uploaded, and tracking that changes nothing
+about the reward. If that behaviour ever changes, the page has to change with
+it.
 
 ---
 
