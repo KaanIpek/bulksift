@@ -47,7 +47,7 @@ export const PRO_ENTITLEMENT = 'pro';
  * buttons that do nothing - which is the difference between "not finished" and
  * "broken".
  */
-export const REVENUECAT_IOS_KEY: string | null = null;
+export const REVENUECAT_IOS_KEY: string | null = 'appl_kZWgGrhmMquthonPjJoSyxgmJUw';
 
 export type StoreState = 'unavailable' | 'ready';
 

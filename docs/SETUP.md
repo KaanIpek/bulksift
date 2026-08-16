@@ -9,7 +9,7 @@ pass through an agent's context.
 | **AdMob** | Done | `ads.ts`, `app.json` |
 | **Supabase** | Done | `auth.ts` |
 | **App Store Connect products** | Done | ids match `store.ts` |
-| **RevenueCat** | Blocked on an in-app purchase key | `store.ts` (still null) |
+| **RevenueCat** | Connected; 2 of 5 packages left to add | `store.ts` |
 | **Price hosting** | Not started | `pricesStore.ts` (still null) |
 
 ---
@@ -83,29 +83,32 @@ submitted together with an app version, and selling anything at all requires the
 
 ---
 
-## Left: RevenueCat
+## Done: RevenueCat
 
-Project **BulkSift** exists with the App Store app form filled in, and it will
-not save without an **In-App Purchase Key**. That key is a `.p8` file downloaded
-once from App Store Connect and it is a credential, so it was left alone
-deliberately.
+Project **BulkSift**, app **BulkSift iOS** (`com.rldgames.bulksift`), connected
+to App Store Connect with an in-app purchase key. The public SDK key is in
+`store.ts`; it names the app and authorises nothing, which is why it ships.
 
-1. App Store Connect > Users and Access > Integrations > **In-App Purchase**,
-   generate a key, download the `.p8`. It can only be downloaded once.
-2. RevenueCat's open form wants the Key ID, the Issuer ID and that file.
-3. Then create an entitlement with the identifier **`pro`** - exactly that
-   string, `PRO_ENTITLEMENT` in `store.ts` reads it - and attach both
-   subscriptions.
-4. Create an offering containing both subscriptions.
-5. Copy the **public SDK key for Apple** (starts `appl_`) into:
+- Entitlement **`pro`** - exactly that string, because `PRO_ENTITLEMENT` reads
+  it - with both subscriptions attached. The credit packs are deliberately NOT
+  attached: buying credits must not grant unlimited scanning.
+- All five products exist. Their store status reads "Could not check" until the
+  products are actually submitted to App Review, which is expected.
+- Offering **`default`** exists, because the app reads `offerings.current` and
+  will find nothing without one.
 
-```ts
-// apps/mobile/src/store.ts
-export const REVENUECAT_IOS_KEY: string | null = 'appl_xxxxxxxxxxxxxxxxxxxx';
-```
+**Two packages still to add**, and the paywall shows only what is in the
+offering, so the $5.99 and $14.99 packs are invisible until they are:
 
-Until then the app reports "Not connected" on the Purchases row rather than
-offering a button that fails.
+1. Product catalog > Offerings > `default` > Edit > **New Package**
+2. Identifier: **Custom** > `credits1000`, description `1000 scan credits`,
+   product `com.rldgames.bulksift.credits.1000`
+3. Repeat for `credits5000` / `5000 scan credits` /
+   `com.rldgames.bulksift.credits.5000`
+4. Save
+
+The first three packages - `credits200`, `$rc_monthly`, `$rc_annual` - are
+already there and were saved successfully.
 
 ## Left: somewhere to host `prices.json`
 
