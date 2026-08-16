@@ -329,9 +329,18 @@ export default function SettingsScreen({
 
       <SectionLabel>About</SectionLabel>
       <Card style={styles.card}>
+        {/*
+          * Points at the page that actually exists rather than at a domain that
+          * has not been bought. App Review follows this link, and a 404 here is
+          * a rejection on its own.
+          */}
         <Row
           label="Privacy policy"
-          onPress={() => void Linking.openURL('https://bulksift.app/privacy')}
+          onPress={() => void Linking.openURL('https://kaanipek.github.io/bulksift/privacy.html')}
+        />
+        <Row
+          label="Support"
+          onPress={() => void Linking.openURL('https://kaanipek.github.io/bulksift/support.html')}
         />
         <Row
           label="Terms of use"
