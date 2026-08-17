@@ -72,7 +72,24 @@ const NAME_MARGIN_K = 16;
  * bit - and it is a sixth of a second at 30 fps, short enough that the ring
  * refreshes before a card can be swapped without the geometry test noticing.
  */
-const VOTE_FRAMES = 5;
+/*
+ * Frames the per-bit majority votes over.
+ *
+ * Swept against moving glare on 40 fixture cards. Margin at 90% glare by depth:
+ *
+ *     1 frame  104        7 frames  124
+ *     3 frames 117        9 frames  124
+ *     5 frames 122       13 frames  125
+ *
+ * The curve is flat after 7, so this is where the idea stops paying - and that
+ * is worth knowing in the other direction too: telling someone to hold a shiny
+ * card longer helps for about a quarter of a second and not after.
+ *
+ * Costs nothing to raise. The descriptors are computed for every frame anyway;
+ * the ring just keeps two more of them, and the majority runs over a slightly
+ * longer list.
+ */
+const VOTE_FRAMES = 7;
 
 /**
  * How far two descriptors may sit apart and still be voted together.

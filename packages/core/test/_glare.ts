@@ -133,9 +133,18 @@ function score(q: Uint8Array, want: number) {
 }
 
 const N = 40;
-const FRAMES_PER_CARD = 7;
+const DEPTHS = [1, 3, 5, 7, 9, 13];
 
-for (const strength of [0.0, 0.5, 0.75, 0.9]) {
+/*
+ * Sweep how many frames the vote gets.
+ *
+ * The shipped value is 5, chosen when the question was "does voting help at
+ * all". The question now is narrower: textured full arts are the worst surface
+ * there is, and if depth keeps paying past 5 then holding one of those cards a
+ * moment longer should be worth real margin.
+ */
+for (const FRAMES_PER_CARD of DEPTHS) {
+for (const strength of [0.75, 0.9]) {
   let d1 = 0, m1 = 0, ok1 = 0;
   let dv = 0, mv = 0, okv = 0;
   let n = 0;
@@ -168,10 +177,12 @@ for (const strength of [0.0, 0.5, 0.75, 0.9]) {
   }
 
   console.log(
+    `depth ${String(FRAMES_PER_CARD).padStart(2)}  ` +
     `glare ${(strength * 100).toFixed(0).padStart(3)}%  ` +
     `one frame: d=${(d1 / n).toFixed(0).padStart(3)} m=${(m1 / n).toFixed(0).padStart(3)} ` +
     `${ok1}/${n} correct   |   ` +
     `${FRAMES_PER_CARD}-frame vote: d=${(dv / n).toFixed(0).padStart(3)} ` +
     `m=${(mv / n).toFixed(0).padStart(3)} ${okv}/${n} correct`,
   );
+}
 }

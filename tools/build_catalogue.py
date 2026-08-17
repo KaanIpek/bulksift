@@ -211,6 +211,73 @@ def match_sets(sets, cards_by_set, groups, products):
     return mapping, report
 
 
+
+# Sets that exist on TCGplayer and nowhere in pokemon-tcg-data.
+#
+# The primary catalogue is 174 sets and does not know the First Partner Pack at
+# all - so the app could not fail to recognise those cards, it had never heard
+# of them. That is a different bug from a hard-to-read card and it looks
+# different in use: not "sometimes wrong" but "nothing, ever".
+#
+# These are jumbo promos, which is presumably why the community dataset skips
+# them. They scan like any other card: the oversize is 5x7 inches, the same 5:7
+# the detector already expects, so only the catalogue entry was missing.
+#
+# Keyed by TCGplayer groupId, valued by the synthetic set this becomes.
+TCGPLAYER_ONLY_SETS = {
+    2776: {"id": "fpp", "name": "First Partner Pack", "release": "2021/10/08"},
+}
+
+
+def tcgplayer_only_cards(groups, products, prices):
+    """Catalogue records for sets the primary source has never heard of.
+
+    Emitted in exactly the shape the rest of the pipeline expects, so the
+    existing steps do the rest: the pokemontcg.io image URL 404s, build_index
+    lists the card in missing_images.json, and fallback_images fetches the
+    TCGplayer product shot and trims it to the card. Nothing new to maintain.
+    """
+    by_id = {g["groupId"]: g for g in groups}
+    out = []
+    for gid, meta in TCGPLAYER_ONLY_SETS.items():
+        if gid not in by_id:
+            print(f"  WARNING: TCGplayer group {gid} not in the feed, skipping")
+            continue
+        made = 0
+        for p in products.get(gid, []):
+            # Sealed product and code cards carry no collector number; the
+            # actual cards do, and that is the cleanest way to tell them apart.
+            if not p.get("_number") or (p.get("_rarity") or "") == "Code Card":
+                continue
+            pid = p["productId"]
+            cid = f'{meta["id"]}-{pid}'
+            out.append({
+                "id": cid,
+                "name": p["name"],
+                "number": p["_number"],
+                "rarity": p.get("_rarity") or "Promo",
+                "supertype": "Pokémon",
+                "artist": None,
+                "setId": meta["id"],
+                "setName": meta["name"],
+                "series": "Promo",
+                "printedTotal": None,
+                "releaseDate": meta["release"],
+                "setSymbol": None,
+                # Deliberately a URL that will not resolve: it puts the card in
+                # missing_images.json, which is what routes it to the TCGplayer
+                # fallback that does have the art.
+                "image": f'https://images.pokemontcg.io/{meta["id"]}/{p["_number"]}.png',
+                "imageHires": f'https://images.pokemontcg.io/{meta["id"]}/{p["_number"]}_hires.png',
+                "tcgplayerProductId": pid,
+                "tcgplayerUrl": p.get("url"),
+                "prices": prices.get(pid),
+            })
+            made += 1
+        print(f'  + {made} cards from TCGplayer group {gid} ({meta["name"]})')
+    return out
+
+
 def main():
     print("[1/4] catalogue")
     sets, cards = load_catalogue()
@@ -272,6 +339,9 @@ def main():
             "tcgplayerUrl": matched[0]["url"] if matched else None,
             "prices": pdata,
         })
+
+    extra = tcgplayer_only_cards(groups, products, prices)
+    out.extend(extra)
 
     print(f"  {hit}/{len(cards)} cards matched a TCGplayer product "
           f"({hit/len(cards)*100:.1f}%)")
