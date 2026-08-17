@@ -54,6 +54,7 @@ import {
 import { cameraPixels, lumaSource, toWorkGrid, type FrameInfo } from './frame';
 import { isNativeAvailable, nativeDescriber, nativeStages } from '../modules/bulksift-detect';
 import { runSelfTest } from './selfTest';
+import type { CapturedRead } from './capture';
 
 /**
  * 960x540 rather than 1280x720.
@@ -109,12 +110,15 @@ export default function ScannerScreen({
   recent,
   onRecent,
   onResetSession,
+  onCaptured,
 }: {
   engine: LoadedEngine;
   onHit: (hit: ScanHit) => string;
   sessionCount: number;
   sessionValue: number;
   onOpenCollection: () => void;
+  /** Receives a rectified card when Settings has asked for one. */
+  onCaptured?: (read: CapturedRead) => Promise<void> | void;
   onUndo: (entryKey: string) => void;
   onRedirect: (entryKey: string, cardId: string) => string;
   /**
@@ -288,6 +292,25 @@ export default function ScannerScreen({
       if (result.detection && !result.preview) st.refused++;
       // How deep the multi-frame vote got. One means it is doing nothing.
       if (result.voteFrames != null) st.vote = Math.max(st.vote, result.voteFrames);
+      /*
+       * A capture was asked for and this is the frame that carries it.
+       *
+       * Written and shared off the frame thread deliberately - base64 of a
+       * quarter-megabyte would drop frames if it ran here.
+       */
+      if (result.sample) {
+        const note = {
+          distance: st.bestDistance,
+          margin: st.margin,
+          vote: result.voteFrames,
+          crop: result.crop,
+          sections: st.sections,
+          preview: result.preview?.card.n ?? null,
+          fill: Math.round((result.detection?.areaFrac ?? 0) * 100),
+        };
+        const shot = { ...result.sample, note };
+        setTimeout(() => { void onCaptured?.(shot); }, 0);
+      }
       // What the crop calibration has settled on. Learned on the device, so it
       // can only be read on the device.
       if (result.crop) {

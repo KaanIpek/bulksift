@@ -55,6 +55,7 @@ import SettingsScreen from './src/SettingsScreen';
 import { syncOnce, type Bases } from './src/sync';
 import { restoreSession } from './src/auth';
 import { runSelfTest } from './src/selfTest';
+import { shareCapture, type CapturedRead } from './src/capture';
 import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
 import {
@@ -111,6 +112,16 @@ export default function App() {
    * could not run it.
    */
   const [selfTest, setSelfTest] = useState<string[] | null>(null);
+  /*
+   * Waiting for the scanner to hand back one rectified card.
+   *
+   * Armed from Settings and consumed by the next processed frame, so the user
+   * arms it, points at the card that will not read, and the file appears. The
+   * alternative - capturing continuously and keeping the last one - costs a
+   * rectify on every frame for something wanted about twice a month.
+   */
+  const [capturing, setCapturing] = useState(false);
+  const [captureNote, setCaptureNote] = useState<string | null>(null);
   /** What each collection was last agreed on with the server. See `Saved`. */
   const [bases, setBases] = useState<Bases>({});
   const [syncing, setSyncing] = useState(false);
@@ -592,6 +603,15 @@ export default function App() {
               onOpenCollection={() => setTab('collection')}
               onUndo={undoScan}
               onRedirect={redirectScan}
+              onCaptured={async (read: CapturedRead) => {
+                setCapturing(false);
+                try {
+                  const name = await shareCapture(read, Date.now());
+                  setCaptureNote(`Saved ${name}`);
+                } catch (e) {
+                  setCaptureNote(`Could not save: ${String((e as Error)?.message ?? e)}`);
+                }
+              }}
             />
           ) : (
             <ScanPreview
@@ -673,6 +693,15 @@ export default function App() {
             onSync={() => void runSync(true)}
             syncing={syncing}
             syncNote={syncNote}
+            onArmCapture={() => {
+              if (!engine) return;
+              engine.scanner.captureNext();
+              setCapturing(true);
+              setCaptureNote('Point at the card that will not read.');
+              setTab('scan');
+            }}
+            capturing={capturing}
+            captureNote={captureNote}
             onRunSelfTest={() => {
               if (!engine) return;
               setSelfTest(['running…']);

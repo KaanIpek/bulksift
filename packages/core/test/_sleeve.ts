@@ -109,7 +109,7 @@ for (let i = 0; i < N && i < meta.count; i++) {
 console.log(`${bases.length} cards, held ${HOLD} frames each\n`);
 console.log('sleeve            correct   margin   crop learned (dx/dy/scale)');
 
-for (const [pad, skew] of [[0.0, 0], [0.03, 0.6], [0.05, 0.6], [0.08, 0.6]] as const) {
+for (const [pad, skew] of [[0.05, 0.6], [0.08, 0.6], [0.12, 0.6], [0.16, 0.6]] as const) {
   const scanner = new Scanner(index, cards, book);
   let correct = 0, wrong = 0;
   const margins: number[] = [];

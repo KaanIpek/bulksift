@@ -78,6 +78,9 @@ export default function SettingsScreen({
   onSync,
   syncing,
   syncNote,
+  onArmCapture,
+  capturing,
+  captureNote,
   onRunSelfTest,
   selfTest,
 }: {
@@ -90,6 +93,9 @@ export default function SettingsScreen({
   onSync: () => void;
   syncing: boolean;
   syncNote: string | null;
+  onArmCapture: () => void;
+  capturing: boolean;
+  captureNote: string | null;
   onRunSelfTest: () => void;
   selfTest: string[] | null;
 }) {
@@ -312,6 +318,19 @@ export default function SettingsScreen({
         <Row
           label="Run engine self-test"
           onPress={onRunSelfTest}
+          tone="accent"
+        />
+        {/*
+          * Saves the card exactly as the engine rectified it, so a read that
+          * fails on a real table can be measured rather than guessed at. Four
+          * theories about why shiny cards are hard were each tested against
+          * synthetic frames and each was either fixed or refuted; the gap that
+          * is left only exists on real cards.
+          */}
+        <Row
+          label={capturing ? 'Point at the card…' : 'Capture a failing read'}
+          value={captureNote ?? undefined}
+          onPress={capturing ? undefined : onArmCapture}
           tone="accent"
           last={!selfTest}
         />

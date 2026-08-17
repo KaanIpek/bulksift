@@ -326,6 +326,22 @@ export interface FrameResult {
    * from a desktop.
    */
   crop?: { dx: number; dy: number; scale: number };
+  /**
+   * A rectified card, captured on request for a read that failed.
+   *
+   * Only ever set on the one frame after `captureNext()` is called, because it
+   * costs a rectify the native path does not otherwise do - with a native core
+   * the descriptor comes back without an image, so by the time a read is
+   * refused there is nothing left to look at.
+   *
+   * This exists because the synthetic harnesses ran out of road. Glare,
+   * alignment, index ceiling and detection resolution were each measured and
+   * each explained part of the gap; the device still reports distances 140 bits
+   * worse than anything reproducible on a desk. Whatever is left is compound
+   * and real, and guessing at it has a poor record. One real frame settles more
+   * than another synthetic sweep.
+   */
+  sample?: { rgba: Uint8ClampedArray; width: number; height: number };
 }
 
 function variantsOf(prices: CardPrices | undefined): PricedVariant[] {
@@ -436,6 +452,33 @@ export class Scanner {
    */
   /** Consecutive frames with no card in them. */
   private blankRun = 0;
+  /** Set by `captureNext`; cleared once one frame has been captured. */
+  private wantSample = false;
+  /**
+   * The captured card, waiting to be attached to whatever this frame returns.
+   *
+   * A field rather than an argument because `track` is a separate method with
+   * two of the three return paths in it, and threading a one-shot debug value
+   * through its signature would put it in every call for the sake of one.
+   */
+  private pendingSample: FrameResult['sample'];
+
+  /**
+   * Ask for the next processed frame to carry its rectified card.
+   *
+   * One frame only. The cost is a rectify that the native path skips, which is
+   * fine once and not fine at thirty a second.
+   */
+  captureNext(): void {
+    this.wantSample = true;
+  }
+
+  /** Hand over the captured card, once. */
+  private takeSample(): FrameResult['sample'] {
+    const s = this.pendingSample;
+    this.pendingSample = undefined;
+    return s;
+  }
   /** Footer of the last recognised card, kept only when it was a near-tie. */
   private lastStrip: Uint8Array | null = null;
   /** Consecutive frames answered from `lastResult` without recognising again. */
@@ -555,6 +598,8 @@ export class Scanner {
     this.frameNo = 0;
     this.preferFlipped = false;
     this.sinceAccept = 0;
+    this.wantSample = false;
+    this.pendingSample = undefined;
     this.clearVote();
     this.lastDetection = null;
     this.lastResult = null;
@@ -681,6 +726,28 @@ export class Scanner {
     let read = describeAt(this.crop, this.preferFlipped);
     let qa = read.desc;
     timings.describe = performance.now() - tDesc;
+
+    /*
+     * Capture the card as the engine actually sees it, once, on request.
+     *
+     * With a native core `read.canonical` is null - the descriptor comes back
+     * without an image - so this rectifies deliberately rather than reusing
+     * something. That is why it is one frame and not every frame.
+     */
+    let sample: FrameResult['sample'];
+    if (this.wantSample) {
+      this.wantSample = false;
+      const q = nudgeQuad(
+        detection.quad, this.crop.dx * span, this.crop.dy * span, this.crop.scale,
+      );
+      const up = rectifyFrom(src, q, CANON_W, CANON_H);
+      sample = {
+        rgba: this.preferFlipped ? rotate180(up, CANON_W, CANON_H) : up,
+        width: CANON_W,
+        height: CANON_H,
+      };
+      this.pendingSample = sample;
+    }
 
     /*
      * Refine the crop, one axis per calibration frame.
@@ -823,7 +890,7 @@ export class Scanner {
       if (this.missFrames >= this.config.clearFrames) this.endOfPresentation();
       return {
         detection, hit: null, preview: null, timings,
-        nameMargin: margin, voteFrames: this.recent.length, crop: this.crop,
+        nameMargin: margin, voteFrames: this.recent.length, crop: this.crop, sample,
       };
     }
     this.missFrames = 0;
@@ -1019,7 +1086,7 @@ export class Scanner {
     if (!confirmed) {
       return {
         detection, hit: null, preview, timings, sections, nameMargin,
-        voteFrames: this.recent.length, crop: this.crop,
+        voteFrames: this.recent.length, crop: this.crop, sample: this.takeSample(),
       };
     }
 
@@ -1050,6 +1117,7 @@ export class Scanner {
       nameMargin,
       voteFrames: this.recent.length,
       crop: this.crop,
+      sample: this.takeSample(),
     };
   }
 
