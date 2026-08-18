@@ -53,7 +53,7 @@ import {
 import Paywall, { type PaywallReason } from './src/Paywall';
 import SettingsScreen from './src/SettingsScreen';
 import { syncOnce, type Bases } from './src/sync';
-import { restoreSession } from './src/auth';
+import { authState, restoreSession } from './src/auth';
 import { runSelfTest } from './src/selfTest';
 import { shareCapture, type CapturedRead } from './src/capture';
 import CollectionBar from './src/CollectionBar';
@@ -656,6 +656,9 @@ export default function App() {
             onOpen={openEntry}
             onScan={() => setTab('scan')}
             onBrowse={() => setTab('browse')}
+            onBackUp={
+              authState() === 'signed-in' ? undefined : () => setTab('settings')
+            }
             onUnwish={(cardId) =>
               setWishlist((prev) => prev.filter((w) => w.cardId !== cardId))}
             priceNote={

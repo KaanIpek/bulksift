@@ -184,9 +184,18 @@ export default function ScannerScreen({
   const fpsRef = useRef(0);
   const seqRef = useRef(0);
 
-  useEffect(() => {
-    if (!hasPermission) void requestPermission();
-  }, [hasPermission, requestPermission]);
+  /*
+   * The camera is NOT asked for on mount.
+   *
+   * iOS asks once. If someone declines, the app is finished for them until they
+   * find the switch in system Settings, and almost nobody does. Firing the
+   * system dialog the instant the tab opens spends that single chance before
+   * saying what the camera is for - and for this app the reason is unusually
+   * reassuring, because nothing is uploaded and no account is needed.
+   *
+   * So the screen below explains first and its button does the asking. Nothing
+   * here requests anything.
+   */
 
   useEffect(() => {
     engineRef.current = engine;
@@ -521,12 +530,20 @@ export default function ScannerScreen({
     return (
       <View style={styles.center}>
         <ScanIcon size={44} color={c.accent} />
-        <Text style={styles.title}>Camera access needed</Text>
+        <Text style={styles.title}>Point the camera at a card</Text>
         <Text style={styles.muted}>
-          BulkSift reads cards on this phone. No photo is uploaded and no
-          account is required.
+          Cards are recognised on this phone. No photo is saved, nothing is
+          uploaded, and it works with no signal at all — so the camera never
+          leaves the device.
         </Text>
-        <Button label="Grant access" kind="primary" onPress={() => void requestPermission()} />
+        <Text style={styles.muted}>
+          iOS will ask next. It only asks once.
+        </Text>
+        <Button
+          label="Turn on the camera"
+          kind="primary"
+          onPress={() => void requestPermission()}
+        />
       </View>
     );
   }

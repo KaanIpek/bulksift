@@ -61,6 +61,7 @@ export default function CollectionScreen({
   priceStale,
   onRefreshPrices,
   refreshing,
+  onBackUp,
 }: {
   entries: Entry[];
   history: Point[];
@@ -70,6 +71,11 @@ export default function CollectionScreen({
   onScan: () => void;
   onBrowse: () => void;
   onUnwish: (cardId: string) => void;
+  /**
+   * Open the place an account is made. Absent once one exists, which is how
+   * the line stops appearing.
+   */
+  onBackUp?: () => void;
   /**
    * How old the prices behind this total are.
    *
@@ -188,6 +194,28 @@ export default function CollectionScreen({
           <Text style={styles.sideLabel}>UNIQUE</Text>
         </View>
       </View>
+
+      {/*
+        * Where an account is worth mentioning: once there is something to lose.
+        *
+        * Not at first launch, where it would be a wall in front of an app that
+        * works perfectly well signed out and is the better for it. An evening
+        * of scanning lives in one file on one phone, and that is the moment
+        * "this exists only here" is worth saying once - quietly, as a fact
+        * rather than a prompt, and it disappears the moment there is an
+        * account.
+        */}
+      {onBackUp && totalCards(entries) >= 50 ? (
+        <Pressable
+          onPress={onBackUp}
+          style={({ pressed }) => [styles.backup, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.backupText} numberOfLines={2}>
+            These cards live only on this phone. Sign in to keep a copy.
+          </Text>
+          <ChevronIcon size={14} color={c.faint} />
+        </Pressable>
+      ) : null}
 
       {history.length >= 2 ? (
         <View style={styles.chartCard}>
@@ -530,6 +558,13 @@ const styles = StyleSheet.create({
   sideValueDim: { color: c.dim, marginTop: 8 },
   sideLabel: { ...t.section, fontSize: 9.5, color: c.faint, marginTop: 1 },
 
+  backup: {
+    flexDirection: 'row', alignItems: 'center', gap: s.sm,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.line,
+    borderRadius: r.md, paddingHorizontal: s.md, paddingVertical: 11,
+    marginTop: s.md,
+  },
+  backupText: { ...t.meta, color: c.dim, flex: 1, lineHeight: 17 },
   chartCard: {
     backgroundColor: c.surface, borderRadius: r.lg, borderWidth: 1, borderColor: c.lineSoft,
     padding: s.md, gap: s.sm,
