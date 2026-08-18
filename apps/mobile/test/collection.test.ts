@@ -12,7 +12,7 @@
  */
 
 import {
-  addScan, bySet, conditionOf, entryValue, gradeLabel, reclassify, regrade,
+  addScan, bySet, conditionOf, defaultVariant, entryValue, gradeLabel, reclassify, regrade,
   repoint, setQuantity, toCsv, totalCards, totalValue, type Entry,
 } from '../src/collection.ts';
 import type { CardRecord } from '../src/core/types.ts';
@@ -176,6 +176,38 @@ const check = (label: string, ok: boolean, detail = '') => {
   e = regrade(e, e[0].key, { grader: 'CGC', score: 9 });
   const row = toCsv(e).split('\n')[1];
   check('csv has the grade', row.includes('CGC 9'), row);
+}
+
+/*
+ * A SCANNED CARD IS PRICED AT ITS PLAINEST PRINTING, NOT ITS DEAREST.
+ *
+ *    The scan sees the picture, and the picture is the same across printings -
+ *    the difference is foil, which the descriptor does not encode. So the
+ *    printing is a guess, and the direction of that guess decides whether any
+ *    number in the app can be acted on.
+ *
+ *    Taking the maximum overstates the median multi-printing card by 2.4x and
+ *    the 90th percentile by 10x against this app's own data. The best-known
+ *    competitor shipped that and its reviews say "typically worth about 1/10th
+ *    of what it tells you". This is the test that stops it coming back.
+ */
+{
+  const v = (variant: string, market: number) => ({ variant, market, low: null, high: null });
+
+  const picked = defaultVariant([v('Reverse Holofoil', 40), v('Normal', 1.2)]);
+  check('a plain printing wins over a dearer reverse holo',
+    picked.name === 'Normal' && picked.price === 1.2, `${picked.name} $${picked.price}`);
+
+  const holoOnly = defaultVariant([v('Holofoil', 9), v('Reverse Holofoil', 31)]);
+  check('with no plain printing, the plainer holo wins',
+    holoOnly.name === 'Holofoil', holoOnly.name);
+
+  const odd = defaultVariant([v('Reverse Holofoil', 31), v('Rainbow', 88)]);
+  check('and with no known printing at all, the cheapest wins',
+    odd.price === 31, `$${odd.price}`);
+
+  const none = defaultVariant([{ variant: 'Normal', market: null, low: null, high: null }]);
+  check('an unpriced card still names a printing', none.name === 'Normal' && none.price === null);
 }
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');

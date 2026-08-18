@@ -351,9 +351,34 @@ function variantsOf(prices: CardPrices | undefined): PricedVariant[] {
     .sort((a, b) => (b.market ?? 0) - (a.market ?? 0));
 }
 
+/**
+ * Printings in the order a scan should assume, plainest first.
+ *
+ * Kept in step with `defaultVariant` in the app, which decides what a scanned
+ * card is actually filed as. They must agree: a feed row quoting one price and
+ * a collection row storing another is worse than either being wrong alone.
+ */
+const PLAIN_FIRST = ['Normal', 'Unlimited', '1st Edition', 'Holofoil'];
+
+/**
+ * What a scanned card is worth, before anyone picks a printing.
+ *
+ * The plain printing, not the dearest. Taking the maximum overstates the median
+ * multi-printing card by 2.4x and the 90th percentile by 10x against this app's
+ * own price data - and the best-known competitor shipped that and earned "it
+ * heavily over values cards... typically worth about 1/10th of what it tells
+ * you", with the developer confirming it "defaulted to Holo/Reverse Card
+ * Prices". Guessing low is recoverable; guessing high means none of the numbers
+ * can be trusted.
+ */
 function topMarketOf(variants: PricedVariant[]): number | null {
   const withPrice = variants.filter((v) => v.market != null);
-  return withPrice.length ? Math.max(...withPrice.map((v) => v.market as number)) : null;
+  if (!withPrice.length) return null;
+  for (const want of PLAIN_FIRST) {
+    const hit = withPrice.find((v) => v.variant === want);
+    if (hit) return hit.market as number;
+  }
+  return Math.min(...withPrice.map((v) => v.market as number));
 }
 
 export class Scanner {
