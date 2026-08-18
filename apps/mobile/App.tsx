@@ -42,7 +42,7 @@ import { load, save } from './src/collectionStore';
 import { freshness, isStale, refreshDue, type PriceState } from './src/prices';
 import { cached, refresh as fetchPrices } from './src/pricesStore';
 import {
-  canScan, canWatchAd, fresh, grantAd, grantPack, refill, refund, setPro, spend,
+  canScan, canWatchAd, fresh, grantAd, grantPack, refill, refund, scansLeft, setPro, spend,
   type Entitlement,
 } from './src/entitlement';
 import {
@@ -122,6 +122,13 @@ export default function App() {
    */
   const [capturing, setCapturing] = useState(false);
   const [captureNote, setCaptureNote] = useState<string | null>(null);
+  /*
+   * The engine's numbers, off by default.
+   *
+   * Kept in memory rather than saved: it is a thing you turn on to answer one
+   * question and should not still be there tomorrow.
+   */
+  const [showDiag, setShowDiag] = useState(false);
   /** What each collection was last agreed on with the server. See `Saved`. */
   const [bases, setBases] = useState<Bases>({});
   const [syncing, setSyncing] = useState(false);
@@ -601,6 +608,8 @@ export default function App() {
               onRecent={setRecent}
               onResetSession={() => { setSession({ count: 0, value: 0 }); setRecent([]); }}
               onOpenCollection={() => setTab('collection')}
+              showDiag={showDiag}
+              scansLeft={scansLeft(ent)}
               onUndo={undoScan}
               onRedirect={redirectScan}
               onCaptured={async (read: CapturedRead) => {
@@ -618,6 +627,7 @@ export default function App() {
               sessionCount={session.count}
               sessionValue={session.value}
               recent={entries.slice(0, 4)}
+              scansLeft={scansLeft(ent)}
               onOpenCollection={() => setTab('collection')}
               onResetSession={() => { setSession({ count: 0, value: 0 }); setRecent([]); }}
             />
@@ -702,6 +712,8 @@ export default function App() {
             }}
             capturing={capturing}
             captureNote={captureNote}
+            showDiag={showDiag}
+            onToggleDiag={() => setShowDiag((v) => !v)}
             onRunSelfTest={() => {
               if (!engine) return;
               setSelfTest(['running…']);
@@ -821,11 +833,13 @@ export default function App() {
  * It never ships: `ScannerScreen` is null only on web.
  */
 function ScanPreview({
-  sessionCount, sessionValue, recent, onOpenCollection, onResetSession,
+  sessionCount, sessionValue, recent, scansLeft, onOpenCollection, onResetSession,
 }: {
   sessionCount: number;
   sessionValue: number;
   recent: Entry[];
+  /** Real, not a placeholder - the point of this stand-in is to be checkable. */
+  scansLeft: number | null;
   onOpenCollection: () => void;
   onResetSession: () => void;
 }) {
@@ -864,6 +878,7 @@ function ScanPreview({
         <ScanOverlay aim={live ? 'good' : 'idle'} live={live} fps={31} />
       </ScanViewport>
       <ScanSummary
+        scansLeft={scansLeft}
         value={sessionValue}
         count={sessionCount}
         scanning={scanning}

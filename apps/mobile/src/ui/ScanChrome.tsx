@@ -107,7 +107,20 @@ export function ScanOverlay({
         </View>
       </View>
 
-      <View pointerEvents="none" style={styles.hud}>
+      {/*
+        * The coaching line, weighted by how it is going.
+        *
+        * This is the only thing standing between someone and a good scan, and
+        * it used to be the same flat grey whether the card was perfectly framed
+        * or not in shot at all. Distance is what people get wrong - the
+        * measurements say a card at half the frame's width costs more match
+        * quality than blur, white balance and glare put together - so "too far"
+        * is the state that gets the loud colour.
+        *
+        * The second line only appears when nothing is being seen. Once a card
+        * is in the brackets it would be advice about a problem already solved.
+        */}
+      <View pointerEvents="none" style={[styles.hud, { borderTopColor: bracket }]}>
         {live ? (
           <>
             <CardImage cardId={live.cardId} number={live.number} width={30} radius={3} />
@@ -117,11 +130,23 @@ export function ScanOverlay({
             </View>
           </>
         ) : (
-          <Text style={styles.hudText} numberOfLines={1}>
-            {aim === 'near'
-              ? 'Move closer — fill the brackets'
-              : 'Pass a card through the frame'}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={[styles.hudText, aim === 'near' ? { color: c.warn } : null]}
+              numberOfLines={1}
+            >
+              {aim === 'near'
+                ? 'Closer — fill the brackets'
+                : aim === 'good'
+                  ? 'Hold it there'
+                  : 'Pass a card through the frame'}
+            </Text>
+            {aim === 'idle' ? (
+              <Text style={styles.hudSub} numberOfLines={1}>
+                A plain dark surface reads best — lay the card flat
+              </Text>
+            ) : null}
+          </View>
         )}
         <View style={[styles.fps, aim === 'good' && { borderColor: c.good }]}>
           <Text style={styles.fpsText}>{fps.toFixed(0)} fps</Text>
@@ -155,9 +180,21 @@ const CORNERS = [
  * worth so far; the collection tab is where any of it gets examined.
  */
 export function ScanSummary({
-  value, count, scanning, onToggle, onReset,
+  value, count, scanning, scansLeft, onToggle, onReset,
 }: {
   value: number; count: number; scanning: boolean;
+  /**
+   * Scans remaining today, or null when there is no limit.
+   *
+   * On screen because the competition's worst reviews are about running into a
+   * wall without warning - "it only lets me scan 3 cards?!?!?! Thats dumb" is
+   * the top critical review of the fastest scanner in the category. This app
+   * gives thirty a day free and ten more per video, which is a real difference
+   * and was invisible at exactly the moment it mattered. A number that is going
+   * down in front of you is also a fair warning, which a paywall appearing
+   * mid-pile is not.
+   */
+  scansLeft: number | null;
   onToggle: () => void;
   /** Start the tally again. Deliberately a hold, not a tap. */
   onReset: () => void;
@@ -179,6 +216,14 @@ export function ScanSummary({
       <View style={styles.countCol}>
         <Text style={styles.label}>CARDS</Text>
         <Text style={styles.count}>{count}</Text>
+        {scansLeft != null ? (
+          <Text
+            style={[styles.leftText, scansLeft <= 5 ? { color: c.warn } : null]}
+            numberOfLines={1}
+          >
+            {scansLeft} left today
+          </Text>
+        ) : null}
       </View>
       <Pressable
         onPress={onToggle}
@@ -369,6 +414,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: s.md, paddingVertical: s.sm,
     flexDirection: 'row', alignItems: 'center', gap: s.sm,
     backgroundColor: 'rgba(5,7,12,0.72)',
+    // The same colour as the brackets, so framing reads as one signal rather
+    // than two things that happen to change at the same time.
+    borderTopWidth: 2,
   },
   hudText: { ...t.body, color: c.text, flex: 1 },
   hudSub: { ...t.tiny, color: c.dim, marginTop: 1 },
@@ -377,6 +425,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: c.line, backgroundColor: 'rgba(8,9,13,0.6)',
   },
   fpsText: { ...t.tiny, color: c.dim, fontVariant: ['tabular-nums'] },
+  leftText: { ...t.tiny, color: c.faint, marginTop: 2, fontVariant: ['tabular-nums'] },
 
   summary: {
     flexDirection: 'row', alignItems: 'center', gap: s.lg,

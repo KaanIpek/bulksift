@@ -81,6 +81,8 @@ export default function SettingsScreen({
   onArmCapture,
   capturing,
   captureNote,
+  showDiag,
+  onToggleDiag,
   onRunSelfTest,
   selfTest,
 }: {
@@ -96,6 +98,8 @@ export default function SettingsScreen({
   onArmCapture: () => void;
   capturing: boolean;
   captureNote: string | null;
+  showDiag: boolean;
+  onToggleDiag: () => void;
   onRunSelfTest: () => void;
   selfTest: string[] | null;
 }) {
@@ -315,6 +319,11 @@ export default function SettingsScreen({
           * also makes it the fastest way to tell a broken install from bad
           * light.
           */}
+        <Row
+          label="Engine readout on the scan screen"
+          value={showDiag ? 'On' : 'Off'}
+          onPress={onToggleDiag}
+        />
         <Row
           label="Run engine self-test"
           onPress={onRunSelfTest}

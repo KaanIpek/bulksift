@@ -111,6 +111,8 @@ export default function ScannerScreen({
   onRecent,
   onResetSession,
   onCaptured,
+  showDiag,
+  scansLeft,
 }: {
   engine: LoadedEngine;
   onHit: (hit: ScanHit) => string;
@@ -119,6 +121,10 @@ export default function ScannerScreen({
   onOpenCollection: () => void;
   /** Receives a rectified card when Settings has asked for one. */
   onCaptured?: (read: CapturedRead) => Promise<void> | void;
+  /** Show the engine's diagnostic line. Off unless Settings turns it on. */
+  showDiag?: boolean;
+  /** Scans left today, or null on Pro. */
+  scansLeft?: number | null;
   onUndo: (entryKey: string) => void;
   onRedirect: (entryKey: string, cardId: string) => string;
   /**
@@ -596,6 +602,7 @@ export default function ScannerScreen({
       </ScanViewport>
 
       <ScanSummary
+        scansLeft={scansLeft ?? null}
         value={sessionValue}
         count={sessionCount}
         scanning={scanning}
@@ -624,7 +631,18 @@ export default function ScannerScreen({
         </View>
       ) : null}
 
-      <Text style={styles.diag} numberOfLines={4}>{diag}</Text>
+      {/*
+        * The engine's own numbers, off unless asked for.
+        *
+        * They were on screen permanently, which is four lines of "frames 3909 ·
+        * found 3902 · d=231 m=2" under someone's cards. Every one of those
+        * numbers earned its place during development and none of them belongs
+        * in front of a person sorting a bulk box - and a build carrying them
+        * cannot be submitted.
+        */}
+      {showDiag ? (
+        <Text style={styles.diag} numberOfLines={4}>{diag}</Text>
+      ) : null}
     </View>
   );
 }
