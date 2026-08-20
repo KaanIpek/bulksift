@@ -135,8 +135,21 @@ export function ScanOverlay({
               style={[styles.hudText, aim === 'near' ? { color: c.warn } : null]}
               numberOfLines={1}
             >
+              {/*
+                * "Fill the brackets" was the old copy and it was a lie twice
+                * over: the brackets are a fixed box in the preview while the
+                * threshold was measured against the whole camera frame, and
+                * the threshold itself was five times higher than the engine
+                * needs. Cards that read perfectly were told to come closer, and
+                * closing in never satisfied it.
+                *
+                * The brackets are an aiming aid - where to put the card - not a
+                * size target, and the copy no longer pretends otherwise. At the
+                * measured threshold this only appears when the card really is
+                * close to the size the detector loses it at.
+                */}
               {aim === 'near'
-                ? 'Closer — fill the brackets'
+                ? 'A little closer'
                 : aim === 'good'
                   ? 'Hold it there'
                   : 'Pass a card through the frame'}

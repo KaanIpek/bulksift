@@ -91,13 +91,38 @@ declare global {
 const RUN_SELF_TEST = __DEV__;
 
 /**
- * Share of the frame a card should cover before a read is trustworthy.
+ * How small a card may get before "move closer" is worth saying.
  *
- * At this fraction a card is read at the quality the whole test suite was
- * measured on; at half of it the descriptor disagrees with its own reference on
- * a third of its bits, which is close enough to noise that the winner flickers.
+ * This was 0.28, and it was wrong by about a factor of five. Read quality is
+ * flat across almost the whole range - measured on 30 fixture cards, rendered
+ * at sizes from filling the frame down to the detector's floor:
+ *
+ *     areaFrac  0.336   distance 85   margin 117
+ *     areaFrac  0.207   distance 78   margin 124
+ *     areaFrac  0.130   distance 79   margin 123
+ *     areaFrac  0.089   distance 81   margin 120
+ *     areaFrac  0.055   distance 85   margin 117
+ *     below that, the detector stops finding a card at all
+ *
+ * A card at 6% of the frame reads as well as one at 34%. So the warning was
+ * firing on cards that were about to be recognised perfectly, and it never went
+ * away - it asked people to keep closing in on a target that was already met,
+ * which is why the guide felt like it was lying. It was.
+ *
+ * The detector's own `minAreaFrac` is 0.05, exactly where the measurement shows
+ * detections stop, so the only size worth warning about is one approaching that
+ * floor. This sits just above it.
  */
-const GOOD_FILL = 0.28;
+const GOOD_FILL = 0.08;
+
+/**
+ * Refused frames a preview survives before it is taken down.
+ *
+ * At 30fps this is about a quarter of a second - long enough to ride out the
+ * dropouts that happen constantly on a shiny card, short enough that the name
+ * on screen is never describing a card that has already been taken away.
+ */
+const PREVIEW_GRACE = 8;
 
 export default function ScannerScreen({
   engine,
@@ -146,6 +171,8 @@ export default function ScannerScreen({
   const allDevices = useCameraDevices();
   const device = backDevice ?? allDevices[0];
   const [live, setLive] = useState<LiveCard | null>(null);
+  /** Consecutive frames holding a card that would not read. */
+  const staleRef = useRef(0);
   /**
    * How much of the frame the card covers, 0..1.
    *
@@ -373,14 +400,33 @@ export default function ScannerScreen({
       const area = result.detection?.areaFrac ?? 0;
       setFill((prev) => (Math.abs(prev - area) < 0.02 ? prev : area));
 
+      /*
+       * The preview has to expire, and it used to expire only when the frame
+       * held no card at all.
+       *
+       * That is the rare case. The common one is a card sitting right there
+       * that will not read - 99% of frames during a hard scan - and through all
+       * of those the last recognised card stayed on screen. Put a Metal Energy
+       * down, pick up a Pikipek that refuses, and the screen still said Metal
+       * Energy. Worse, "That's my card - add it" is wired to exactly that
+       * value, so confirming it added a card that was not on the table.
+       *
+       * It cannot clear on the first refused frame either: reads drop out for a
+       * frame or two constantly and the name would strobe. So a short grace,
+       * about a quarter of a second, and then it goes.
+       */
       if (result.preview) {
         const card = result.preview.card;
+        staleRef.current = 0;
         setLive((prev) => (
           prev && prev.name === card.n && prev.set === card.S
             ? prev
             : { name: card.n, set: card.S, cardId: card.i, number: card.u }
         ));
       } else if (!result.detection) {
+        staleRef.current = 0;
+        setLive((prev) => (prev === null ? prev : null));
+      } else if (++staleRef.current >= PREVIEW_GRACE) {
         setLive((prev) => (prev === null ? prev : null));
       }
 

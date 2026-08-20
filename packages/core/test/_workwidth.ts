@@ -109,13 +109,13 @@ function score(q: Uint8Array, want: number) {
 }
 
 const N = 30;
-const WIDTHS = [320, 480, 640, 800];
-const FILLS = [0.9, 0.6, 0.45];
+const WIDTHS = [320];
+const FILLS = [0.9, 0.7, 0.55, 0.45, 0.35, 0.28, 0.22, 0.16];
 
-console.log('fill  workWidth   distance  margin  correct   detect ms/frame');
+console.log('height  areaFrac   distance  margin  correct');
 for (const fill of FILLS) {
   for (const workWidth of WIDTHS) {
-    let dSum = 0, mSum = 0, ok = 0, n = 0, ms = 0;
+    let dSum = 0, mSum = 0, ok = 0, n = 0, ms = 0, areaSum = 0;
     for (let i = 0; i < Math.min(N, meta.count); i++) {
       const base = canonical(i);
       if (!base) continue;
@@ -124,6 +124,7 @@ for (const fill of FILLS) {
       const det = detectCard(img, W, H, { workWidth, channels: 4 });
       ms += performance.now() - t0;
       if (!det) continue;
+      areaSum += det.areaFrac;
       const card = rectifyFrom(sourceOf(img, W, H, 4), det.quad, CANON_W, CANON_H);
       const s = score(describe(card), meta.frames[i].row);
       dSum += s.d; mSum += Math.min(s.margin, 742); if (s.ok) ok++;
@@ -131,10 +132,9 @@ for (const fill of FILLS) {
     }
     if (!n) { console.log(`${fill}  ${workWidth}: no detections`); continue; }
     console.log(
-      `${fill.toFixed(2)}  ${String(workWidth).padStart(9)}   ` +
+      `${fill.toFixed(2)}    ${(areaSum / n).toFixed(3).padStart(6)}   ` +
       `${(dSum / n).toFixed(0).padStart(8)}  ${(mSum / n).toFixed(0).padStart(6)}  ` +
-      `${String(ok).padStart(2)}/${n}     ${(ms / Math.min(N, meta.count)).toFixed(2)}`,
+      `${String(ok).padStart(2)}/${n}`,
     );
   }
-  console.log();
 }
