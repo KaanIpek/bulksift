@@ -226,7 +226,7 @@ const FOOTER_BAND = 90;
  */
 const CALIBRATE_EVERY = 8;
 const CALIBRATE_STEP = 0.02;
-const CALIBRATE_LIMIT = 0.15;
+const CALIBRATE_LIMIT = 0.24;
 
 /**
  * Frames without a single accepted read before the crop search goes looking.
@@ -269,7 +269,24 @@ const SETTLE_SWEEP = 3;
  * Translation drift is the detector being wrong about WHERE the card is, and it
  * is the more expensive of the two by a factor of six.
  */
-const OFFSET_LIMIT = 0.10;
+const OFFSET_LIMIT = 0.16;
+
+/*
+ * Both limits were raised because the device kept SATURATING them.
+ *
+ * Five sessions reported the crop sitting at exactly +15, -15 and -10, against
+ * bounds of 0.15 and 0.10. A search parked on its bound is not a search that
+ * has converged - it is one being told to stop, and the correction it wanted
+ * was larger than it was allowed to make.
+ *
+ * The sleeve harness showed no benefit from raising them, but that only says
+ * the synthetic error there is smaller than the real one; it is not evidence
+ * the real one fits. Between a search that can reach and one that provably
+ * cannot, the reaching one is right - and the thing that makes it safe is not
+ * the bound but the agreement rule, which requires the same nudge to win twice
+ * in a row before anything moves. The no-card suite is what proves that, and it
+ * passes at these limits.
+ */
 
 /**
  * Bits a nudged crop must win by before it is adopted.

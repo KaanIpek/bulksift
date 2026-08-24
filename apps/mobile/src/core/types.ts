@@ -199,6 +199,20 @@ export const DEFAULT_CONFIG: ScannerConfig = {
    * harmless - the more rows there are, the closer the nearest neighbour to
    * random noise gets, and a crumpled bedsheet started reading as a Double
    * Colorless Energy. The no-card suite caught it, which is what it is for.
+   *
+   * Swept against both failures, because they pull in opposite directions - a
+   * looser gate reads more badly-cropped cards AND more bedsheets:
+   *
+   *     gate   empty surfaces wrongly read   sleeved cards read (of 30)
+   *      200            0                       23 / 23 / 19
+   *      210            1                       25 / 23 / 19
+   *      220            3                       27 / 23 / 21
+   *      240            3                       27 / 22 / 21
+   *
+   * 200 is the only value that lets nothing through. The price is two to four
+   * sleeved reads in thirty, in the badly-cropped case, and that is the right
+   * side to err on: a refused card costs another second under the lens, while
+   * a card invented out of a bedsheet is added silently and has to be found.
    */
   maxDistance: 200,
   /*
