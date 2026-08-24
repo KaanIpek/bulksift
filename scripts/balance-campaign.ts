@@ -90,14 +90,36 @@ function required(index: number): number {
   return 2;
 }
 
+/** The opening missions also have to survive being played badly. A player
+ *  meeting this game for the first time throws half a garrison at whatever
+ *  is nearest and hopes; if that loses in a minute they never see mission
+ *  three. So the first three are additionally gated on the *weakest*
+ *  commander in the game being able to win them. */
+function requiredNaive(index: number): number {
+  if (index === 0) return 4;
+  if (index <= 2) return 2;
+  return 0;
+}
+
+/** How full an enemy garrison may start. A single intimidating stack on the
+ *  tutorial map is technically fair and reads as a wall, so the opening
+ *  missions keep their enemies thin however the arithmetic falls out. */
+function fillCeiling(index: number): number {
+  return index <= 1 ? 0.45 : 0.85;
+}
+
 const SEEDS = [3, 77, 512, 901, 1234];
 
-function playtest(level: (typeof CAMPAIGN)[number], bases: LevelBase[]): number {
+function playtest(
+  level: (typeof CAMPAIGN)[number],
+  bases: LevelBase[],
+  playerTier: 'legend' | 'recruit' = 'legend',
+): number {
   let wins = 0;
   for (const seed of SEEDS) {
     const w = new World({ ...level, bases }, seed);
     const enemy = new AiCommander(w, level.difficulty, 'enemy', seed + 1);
-    const player = new AiCommander(w, 'legend', 'player', seed + 2);
+    const player = new AiCommander(w, playerTier, 'player', seed + 2);
     for (let i = 0; i < 900 / STEP; i++) {
       enemy.update(STEP);
       player.update(STEP);
@@ -148,32 +170,41 @@ const rebuilt = blocks.map((block, bi) => {
   const s = sides(solved);
   // With levels fixed, solve the enemy garrison fill for the intended edge.
   const want = target * (s.pEcon + s.pTroops) - s.eEcon;
-  let fill = Math.max(0.22, Math.min(0.85, want / s.eCap));
+  const index = bi - 1;
+  let fill = Math.max(0.22, Math.min(fillCeiling(index), want / s.eCap));
   let tuned = withFill(solved, fill);
 
   // Now stop trusting the model and actually play it.
-  const need = required(bi - 1);
-  let wins = playtest(level, tuned);
+  const need = required(index);
+  const needNaive = requiredNaive(index);
+  const passes = () => {
+    const strong = playtest(level, tuned);
+    const naive = needNaive > 0 ? playtest(level, tuned, 'recruit') : SEEDS.length;
+    return { strong, naive, ok: strong >= need && naive >= needNaive };
+  };
+
+  let result = passes();
   let handicaps = 0;
-  while (wins < need && handicaps < 8) {
+  while (!result.ok && handicaps < 8) {
     handicaps++;
     if (handicaps % 2 === 0) {
       const weaker = demote(tuned);
       if (weaker) {
         tuned = withFill(weaker, fill);
-        wins = playtest(level, tuned);
+        result = passes();
         continue;
       }
     }
     fill = Math.max(0.12, fill * 0.82);
     tuned = withFill(tuned, fill);
-    wins = playtest(level, tuned);
+    result = passes();
   }
 
   report.push(
     `${level.name.padEnd(18)} edge ${edgeOf(tuned).toFixed(2)} (target ${target.toFixed(2)})` +
-      `  fill ${(fill * 100).toFixed(0)}%  playtest ${wins}/${SEEDS.length} (need ${need})` +
-      (wins < need ? '  <-- STILL UNWINNABLE' : ''),
+      `  fill ${(fill * 100).toFixed(0)}%  strong ${result.strong}/${SEEDS.length} (need ${need})` +
+      (needNaive > 0 ? `  naive ${result.naive}/${SEEDS.length} (need ${needNaive})` : '') +
+      (result.ok ? '' : '  <-- STILL UNWINNABLE'),
   );
 
   let seen = -1;

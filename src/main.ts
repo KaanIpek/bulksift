@@ -51,6 +51,9 @@ class Game {
   private lastFrame = 0;
   private clock = 0;
   private toastTimer: number | null = null;
+  /** What the open base panel is currently showing, so it can be rebuilt the
+   *  moment that stops being true and not on every single frame. */
+  private inspectorSignature = '';
 
   constructor() {
     this.world = new World(SKIRMISH, 7);
@@ -355,6 +358,20 @@ class Game {
     return base ? this.renderer.screenOf(base) : null;
   }
 
+  /** Every base with where it is on the glass, for the screenshot harness. */
+  roster(): { id: number; owner: string; garrison: number; x: number; y: number }[] {
+    return this.world.bases.map((b) => {
+      const p = this.renderer.screenOf(b);
+      return {
+        id: b.id,
+        owner: b.owner,
+        garrison: this.world.displayCount(b),
+        x: p.x,
+        y: p.y,
+      };
+    });
+  }
+
   /** A short description of what is going on, for the screenshot harness. */
   snapshot(): Record<string, unknown> {
     return {
@@ -390,6 +407,11 @@ class Game {
       this.hudView?.update(this.world);
     }
 
+    // The panel has to follow the base it is describing: a garrison ticking
+    // up past the price of an upgrade should light the button up by itself,
+    // not sit there greyed out until something else happens to redraw it.
+    this.syncInspector();
+
     this.renderer.fx.update(dt);
     this.renderer.draw(this.world, {
       selected: this.selected,
@@ -400,6 +422,25 @@ class Game {
     });
 
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  private syncInspector(): void {
+    if (!this.inspecting) {
+      this.inspectorSignature = '';
+      return;
+    }
+    const base = this.world.bases[this.inspecting.id];
+    if (!base) return;
+    const signature = [
+      base.id,
+      base.owner,
+      base.level,
+      this.world.displayCount(base),
+      this.world.canUpgrade(base, 'player'),
+    ].join('/');
+    if (signature === this.inspectorSignature) return;
+    this.inspectorSignature = signature;
+    this.refreshHud();
   }
 
   /** Sounds that follow from what just happened in the simulation. */
@@ -414,6 +455,14 @@ class Game {
   }
 }
 
+// Cache the shell so the game keeps working with no signal. Failing to
+// register is not worth telling anyone about: it only costs offline play.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
 const game = new Game();
 
 // Exposed so the screenshot harness in scripts/ can find a base on the glass
@@ -421,5 +470,6 @@ const game = new Game();
 // is looking.
 (window as unknown as { frontline: unknown }).frontline = {
   baseAt: (id: number) => game.locate(id),
+  bases: () => game.roster(),
   state: () => game.snapshot(),
 };

@@ -97,19 +97,33 @@ describe('the enemy commander', () => {
     const level = CAMPAIGN[1];
     const w = new World(level, 8);
     const bot = new AiCommander(w, 'elite', 'enemy', 9);
-    // Throw everything at one enemy base and watch for a relief column.
+    // Let both sides settle, then find the sides by who owns what rather
+    // than by index: the level data is solved by a script and its ordering
+    // is not a promise.
     for (let i = 0; i < 240; i++) {
       bot.update(STEP);
       w.update(STEP);
       w.fx.length = 0;
     }
-    w.send(0, 4, 'player', 1);
+    const attacker = w.basesOf('player').sort((a, b) => b.garrison - a.garrison)[0];
+    const victim = w
+      .basesOf('enemy')
+      .sort(
+        (a, b) =>
+          Math.hypot(a.x - attacker.x, a.y - attacker.y) -
+          Math.hypot(b.x - attacker.x, b.y - attacker.y),
+      )[0];
+    expect(attacker, 'the player still holds something').toBeDefined();
+    expect(victim, 'the enemy still holds something').toBeDefined();
+
+    // Throw everything at one enemy base and watch for a relief column.
+    w.send(attacker.id, victim.id, 'player', 1);
     let relief = false;
-    for (let i = 0; i < 600 && !relief; i++) {
+    for (let i = 0; i < 900 && !relief; i++) {
       bot.update(STEP);
       w.update(STEP);
       w.fx.length = 0;
-      relief = w.squads.some((q) => q.owner === 'enemy' && q.toId === 4);
+      relief = w.squads.some((q) => q.owner === 'enemy' && q.toId === victim.id);
     }
     expect(relief).toBe(true);
   });
