@@ -47,7 +47,14 @@ QUALITY = 52
 
 
 def main() -> int:
-    cards_path = OUT_DIR / "cards.json"
+    # Read the SOURCE catalogue, not the copy already staged in the app.
+    #
+    # Reading the staged copy makes this silently depend on `npm run sync`
+    # having been run first: add cards, rebuild the index, build thumbs, and the
+    # pack is built against the previous catalogue with no error anywhere. It
+    # happened - 25,234 cards in the index and 20,468 in the pack, caught only
+    # because a test counts them. Every new card would have shown blank art.
+    cards_path = ROOT / "data" / "cards.json"
     compact = json.loads(cards_path.read_text(encoding="utf-8"))
     sets = compact["sets"]
     rows = compact["cards"]

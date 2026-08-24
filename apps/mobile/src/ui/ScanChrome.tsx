@@ -66,9 +66,11 @@ export interface LiveCard {
  * quality, more than blur, white balance and glare put together.
  */
 export function ScanOverlay({
-  aim, live, fps, onConfirm,
+  aim, live, fps, onConfirm, dockHeight,
 }: {
   aim: Aim;
+  /** How much of the picture the floating dock covers, so the guide clears it. */
+  dockHeight?: number;
   live: LiveCard | null;
   fps: number;
   /**
@@ -90,7 +92,10 @@ export function ScanOverlay({
   const bracket = aim === 'good' ? c.good : aim === 'near' ? c.warn : 'rgba(242,244,249,0.5)';
   return (
     <>
-      <View pointerEvents="none" style={styles.guideWrap}>
+      <View
+        pointerEvents="none"
+        style={[styles.guideWrap, { paddingBottom: dockHeight ?? DEFAULT_DOCK_H }]}
+      >
         <View style={styles.guide}>
           {CORNERS.map(([id, pos]) => (
             <View
@@ -405,12 +410,34 @@ export function ScanViewport({ children }: { children: ReactNode }) {
  * rectangle at 82% is indistinguishable from one at arm's length over a dark
  * table.
  */
-export function ScanDock({ children }: { children: ReactNode }) {
-  return <View style={styles.dock}>{children}</View>;
+export function ScanDock({
+  children, onHeight,
+}: { children: ReactNode; onHeight?: (h: number) => void }) {
+  return (
+    <View
+      style={styles.dock}
+      onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
+    >
+      {children}
+    </View>
+  );
 }
 
 /** How tall the readout strip is, so the framing guide can sit clear of it. */
 const HUD_H = 50;
+
+/**
+ * Room left under the guide for the floating dock.
+ *
+ * The guide used to be centred in a 44% camera strip with 50pt of padding for a
+ * readout that sat inside it. The camera now fills the screen and the readout,
+ * totals and feed float over the bottom instead - so centring on the old
+ * numbers put a small box high in a tall picture, which is why the brackets
+ * never looked like they had anything to do with the card.
+ *
+ * Measured against the dock rather than guessed: it reports its own height.
+ */
+const DEFAULT_DOCK_H = 210;
 
 const styles = StyleSheet.create({
   cameraWrap: { flex: 1, backgroundColor: '#05070c' },
@@ -427,10 +454,16 @@ const styles = StyleSheet.create({
    */
   guideWrap: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    paddingBottom: HUD_H, paddingTop: s.sm,
+    paddingTop: s.sm,
     alignItems: 'center', justifyContent: 'center',
   },
-  guide: { height: '94%', aspectRatio: 2.5 / 3.5 },
+  /*
+   * 86%, not 94%. A card held at a comfortable distance overflowed a guide
+   * sized to fill the strip, so the brackets sat inside the card instead of
+   * around it - and an aiming frame the card does not fit in is worse than
+   * none. This leaves room for the card to sit within it.
+   */
+  guide: { height: '86%', aspectRatio: 2.5 / 3.5 },
   corner: { position: 'absolute', width: 30, height: 30, borderWidth: 3 },
   cornerTop: { borderBottomWidth: 0 },
   cornerBottom: { borderTopWidth: 0 },

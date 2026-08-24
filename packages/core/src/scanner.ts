@@ -171,8 +171,43 @@ function majority(descs: Uint8Array[]): Uint8Array {
  * must not count as rivals when deciding whether a card is there at all.
  */
 export const baseName = (name: string): string => {
-  const at = name.indexOf(' (');
-  return at > 0 ? name.slice(0, at) : name;
+  /*
+   * Cut at either bracket. The primary catalogue writes the qualifier in
+   * parentheses - "Professor's Research (Professor Sada)" - and TCGplayer
+   * writes the same thing in square brackets. Handling only one leaves the
+   * other folded into the name, so the two spellings of one card became rivals
+   * ten bits apart and neither could be committed.
+   */
+  const paren = name.indexOf(' (');
+  const square = name.indexOf(' [');
+  const marks = [paren, square].filter((x) => x > 0);
+  const at = marks.length ? Math.min(...marks) : -1;
+  const cut = at > 0 ? name.slice(0, at) : name;
+  /*
+   * Fold punctuation and case away before comparing.
+   *
+   * This decides whether two catalogue rows are "the same card" for the
+   * acceptance margin, and two sources spell the same card differently:
+   * pokemon-tcg-data writes "Lurantis-GX", TCGplayer writes "Lurantis GX". Read
+   * literally those are rivals, so the margin rule measured a card against
+   * another printing of itself and neither could clear the gate - 8 of 60
+   * sampled rainbow rares were unreachable for that reason alone.
+   *
+   * Folding can only ever merge names, never split them, so the worst it can do
+   * is decline to distinguish two cards that differ solely by punctuation. No
+   * such pair exists: the hyphenated names - Ho-Oh, Porygon-Z - have no
+   * space-separated twin.
+   */
+  return cut
+    // Decompose first, so an accent becomes a separate mark that the strip
+    // below removes - otherwise "Poké Ball" folds to "pokball" while "Poke
+    // Ball" folds to "pokeball", and the two spellings of one card end up
+    // rivals seven bits apart. Dropping the accented letter is not the same as
+    // normalising it, and this catalogue spells Pokemon both ways.
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 };
 
 /**

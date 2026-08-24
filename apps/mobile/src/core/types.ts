@@ -187,7 +187,20 @@ export const DEFAULT_CONFIG: ScannerConfig = {
   // scans the single unflagged mistake misquoted by $0.12 (a 72c Gardevoir read
   // as its 60c reprint). Expensive confusions are caught by ambiguousMargin and
   // handed to the user instead.
-  maxDistance: 240,
+  /*
+   * 200, not 240.
+   *
+   * Correct reads sit at a median of 38 and a 99th percentile of 194, and the
+   * gate sweep flattens at 200: 94 of 100 priced correctly at 200, and the same
+   * 94 at 240, 260 and 300. Those extra 46 bits bought nothing and were pure
+   * false-positive surface.
+   *
+   * Harmless while the index was 20,444 cards. At 25,234 it stopped being
+   * harmless - the more rows there are, the closer the nearest neighbour to
+   * random noise gets, and a crumpled bedsheet started reading as a Double
+   * Colorless Energy. The no-card suite caught it, which is what it is for.
+   */
+  maxDistance: 200,
   /*
    * How far the winner must beat the first rival that is a different card.
    *

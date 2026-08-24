@@ -174,6 +174,8 @@ export default function ScannerScreen({
   const [live, setLive] = useState<LiveCard | null>(null);
   /** Consecutive frames holding a card that would not read. */
   const staleRef = useRef(0);
+  /** What the floating dock actually measures, so the guide can clear it. */
+  const [dockH, setDockH] = useState<number | undefined>(undefined);
   /**
    * How much of the frame the card covers, 0..1.
    *
@@ -627,6 +629,7 @@ export default function ScannerScreen({
           onError={(e) => setDiag(`camera error: ${e.message}`)}
         />
         <ScanOverlay
+          dockHeight={dockH}
           aim={aim}
           live={live}
           fps={fps}
@@ -674,7 +677,7 @@ export default function ScannerScreen({
         />
       </ScanViewport>
 
-      <ScanDock>
+      <ScanDock onHeight={setDockH}>
       <ScanSummary
         scansLeft={scansLeft ?? null}
         value={sessionValue}

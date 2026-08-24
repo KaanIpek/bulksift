@@ -251,6 +251,31 @@ TCGPLAYER_ONLY_SETS = {
 }
 
 
+def clean_product_name(raw):
+    """A TCGplayer product name reduced to the card's actual name.
+
+    TCGplayer sells products, not cards, so it names them for a shelf:
+    "Thundurus - 50/113 (BW Legendary Treasures)" or "Delphox - 013/086
+    (Non-Holo)". Imported verbatim those read as DIFFERENT names from the plain
+    "Thundurus" already in the catalogue - and the acceptance rule measures its
+    margin to the nearest differently-named card, so a card ended up competing
+    with itself and neither printing could clear the gate.
+
+    Measured before this existed: 19 of 401 sampled cards sat under the gate,
+    including 8 of 60 rainbow rares, and every single collision was a card
+    against another printing of itself.
+
+    Splitting on " - " is safe because that is TCGplayer's own separator and no
+    Pokemon name contains a spaced hyphen; the hyphenated ones - Ho-Oh, Porygon-Z
+    - have no spaces around it.
+    """
+    name = raw.split(" - ")[0].strip()
+    # A parenthetical that survives is a variant marker, not part of the name.
+    if name.endswith(")") and "(" in name:
+        name = name[:name.rindex("(")].strip()
+    return name or raw
+
+
 def tcgplayer_only_cards(groups, products, prices):
     """Catalogue records for sets the primary source has never heard of.
 
@@ -275,7 +300,7 @@ def tcgplayer_only_cards(groups, products, prices):
             cid = f'{meta["id"]}-{pid}'
             out.append({
                 "id": cid,
-                "name": p["name"],
+                "name": clean_product_name(p["name"]),
                 "number": p["_number"],
                 "rarity": p.get("_rarity") or "Promo",
                 "supertype": "Pokémon",
