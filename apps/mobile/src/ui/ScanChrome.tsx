@@ -382,16 +382,43 @@ export function ScanFeed({
   );
 }
 
-/** The camera's slot: a fixed share of the screen, whatever fills it. */
+/**
+ * The camera, filling everything.
+ *
+ * It used to be a 44% strip with the readout and the feed stacked underneath in
+ * solid panels, which meant more than half the screen was a list while the
+ * thing being aimed was a letterbox. The camera is what this screen is for, so
+ * it takes all of it and the rest floats on top.
+ */
 export function ScanViewport({ children }: { children: ReactNode }) {
   return <View style={styles.cameraWrap}>{children}</View>;
+}
+
+/**
+ * The panel that floats over the bottom of the picture.
+ *
+ * Translucent rather than opaque so the table stays visible behind it - you can
+ * see where the next card is going while the last one is still being totted up.
+ *
+ * A solid tint and not a blur: `expo-blur` is a native module, every one of
+ * those has cost this project a build cycle to get linking on iOS, and a
+ * rectangle at 82% is indistinguishable from one at arm's length over a dark
+ * table.
+ */
+export function ScanDock({ children }: { children: ReactNode }) {
+  return <View style={styles.dock}>{children}</View>;
 }
 
 /** How tall the readout strip is, so the framing guide can sit clear of it. */
 const HUD_H = 50;
 
 const styles = StyleSheet.create({
-  cameraWrap: { height: '44%', backgroundColor: '#05070c' },
+  cameraWrap: { flex: 1, backgroundColor: '#05070c' },
+  dock: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(8,9,13,0.82)',
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.10)',
+  },
   /*
    * The guide centres in the picture *above* the readout, not in the whole
    * picture. Centred in the whole thing, its two bottom brackets landed behind
@@ -443,7 +470,7 @@ const styles = StyleSheet.create({
   summary: {
     flexDirection: 'row', alignItems: 'center', gap: s.lg,
     paddingHorizontal: s.lg, paddingVertical: s.md,
-    borderBottomWidth: 1, borderBottomColor: c.lineSoft,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   label: { ...t.section, color: c.faint },
   resetHint: { ...t.tiny, fontSize: 9.5, color: c.faint, opacity: 0.7, marginTop: 1 },
@@ -467,7 +494,7 @@ const styles = StyleSheet.create({
   pauseGlyph: { flexDirection: 'row', gap: 3 },
   pauseBar: { width: 3.5, height: 13, borderRadius: 2, backgroundColor: c.text },
 
-  feedWrap: { flex: 1, paddingHorizontal: s.lg, paddingTop: s.md },
+  feedWrap: { paddingHorizontal: s.lg, paddingTop: s.sm, paddingBottom: s.sm },
   feedHeadRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: s.sm,

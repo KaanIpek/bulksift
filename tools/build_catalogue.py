@@ -225,7 +225,29 @@ def match_sets(sets, cards_by_set, groups, products):
 #
 # Keyed by TCGplayer groupId, valued by the synthetic set this becomes.
 TCGPLAYER_ONLY_SETS = {
+    # Promos and side products the community dataset has never carried. Audited
+    # by comparing every TCGplayer group against the catalogue: 43 groups had
+    # zero coverage and 7,915 cards were simply unknown to the app, which is a
+    # quarter of everything for sale. Somebody scanning a promo binder got
+    # nothing, forever, and no error explaining why.
     2776: {"id": "fpp", "name": "First Partner Pack", "release": "2021/10/08"},
+    2282: {"id": "wcd", "name": "World Championship Decks", "release": "2004/01/01"},
+    22880: {"id": "pps", "name": "Prize Pack Series", "release": "2022/07/01"},
+    1539: {"id": "lcc", "name": "League & Championship Cards", "release": "2010/01/01"},
+    1840: {"id": "dex", "name": "Deck Exclusives", "release": "2010/01/01"},
+    1528: {"id": "jmb", "name": "Jumbo Cards", "release": "2000/01/01"},
+    1863: {"id": "smb", "name": "SM Base Set", "release": "2017/02/03"},
+    2289: {"id": "ble", "name": "Blister Exclusives", "release": "2010/01/01"},
+    24451: {"id": "mep", "name": "ME: Mega Evolution Promo", "release": "2026/01/01"},
+    23323: {"id": "tcc", "name": "Trading Card Game Classic", "release": "2023/11/17"},
+    1663: {"id": "bss", "name": "Base Set (Shadowless)", "release": "1999/01/09"},
+    23520: {"id": "ba24", "name": "Battle Academy 2024", "release": "2024/01/01"},
+    3051: {"id": "ba22", "name": "Battle Academy 2022", "release": "2022/01/01"},
+    2686: {"id": "ba20", "name": "Battle Academy", "release": "2020/01/01"},
+    1418: {"id": "wotcp", "name": "WoTC Promo", "release": "1999/01/01"},
+    1421: {"id": "dpp", "name": "Diamond and Pearl Promos", "release": "2007/01/01"},
+    2332: {"id": "ppp", "name": "Professor Program Promos", "release": "2010/01/01"},
+    1938: {"id": "aap", "name": "Alternate Art Promos", "release": "2010/01/01"},
 }
 
 

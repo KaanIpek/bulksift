@@ -48,12 +48,13 @@ import { c, s as sp, t as ty } from './ui/theme';
 import { ScanIcon } from './ui/icons';
 import { Button } from './ui/parts';
 import {
-  ScanFeed, ScanOverlay, ScanSummary, ScanViewport,
+  ScanDock, ScanFeed, ScanOverlay, ScanSummary, ScanViewport,
   type Aim, type LiveCard, type ScannedRow,
 } from './ui/ScanChrome';
 import { cameraPixels, lumaSource, toWorkGrid, type FrameInfo } from './frame';
 import { isNativeAvailable, nativeDescriber, nativeStages } from '../modules/bulksift-detect';
 import { runSelfTest } from './selfTest';
+import { cardScanned } from './feedback';
 import type { CapturedRead } from './capture';
 
 /**
@@ -432,6 +433,15 @@ export default function ScannerScreen({
 
       if (result.hit) {
         const hit = result.hit;
+        /*
+         * Ring before anything else touches state.
+         *
+         * A bulk session is spent looking at the pile, not the phone - that is
+         * the whole point of propping it up - so the sound IS the confirmation
+         * that a card registered. It never blocks: the call returns
+         * immediately and the frame thread carries on.
+         */
+        cardScanned(!hit.ambiguity);
         // `onHit` returns the collection key it wrote to, so a row in the feed
         // can undo or redirect itself without searching the collection for a
         // card that may since have been merged into an existing pile.
@@ -664,6 +674,7 @@ export default function ScannerScreen({
         />
       </ScanViewport>
 
+      <ScanDock>
       <ScanSummary
         scansLeft={scansLeft ?? null}
         value={sessionValue}
@@ -677,12 +688,21 @@ export default function ScannerScreen({
         }}
       />
 
+      {/*
+        * Three rows, not five.
+        *
+        * The feed is reassurance that the last card landed, not a place to read
+        * a collection - that is what the Collection tab is. Every row it keeps
+        * is a row of camera it covers up, and the camera is the thing being
+        * aimed.
+        */}
       <ScanFeed
-        rows={recent}
+        rows={recent.slice(0, 3)}
         onOpenCollection={onOpenCollection}
         onUndo={onUndo}
         onRedirect={onRedirect}
       />
+      </ScanDock>
 
       {selfTest ? (
         <View style={styles.selfTest}>

@@ -56,6 +56,7 @@ import { syncOnce, type Bases } from './src/sync';
 import { authState, restoreSession } from './src/auth';
 import { runSelfTest } from './src/selfTest';
 import { shareCapture, type CapturedRead } from './src/capture';
+import { setSoundEnabled } from './src/feedback';
 import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
 import {
@@ -120,6 +121,7 @@ export default function App() {
    * alternative - capturing continuously and keeping the last one - costs a
    * rectify on every frame for something wanted about twice a month.
    */
+  const [sound, setSound] = useState(true);
   const [capturing, setCapturing] = useState(false);
   const [captureNote, setCaptureNote] = useState<string | null>(null);
   /*
@@ -706,6 +708,12 @@ export default function App() {
             onSync={() => void runSync(true)}
             syncing={syncing}
             syncNote={syncNote}
+            sound={sound}
+            onToggleSound={() => {
+              const next = !sound;
+              setSound(next);
+              setSoundEnabled(next);
+            }}
             onArmCapture={() => {
               if (!engine) return;
               engine.scanner.captureNext();

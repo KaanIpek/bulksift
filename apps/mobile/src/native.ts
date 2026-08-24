@@ -39,6 +39,24 @@ export function purchasesSdk<T>(): T | null {
   }
 }
 
+/** Audio playback, for the sound a landed card makes. */
+export function audioSdk<T>(): T | null {
+  try {
+    return require('expo-audio') as T;
+  } catch {
+    return null;
+  }
+}
+
+/** The taptic engine. Silent feedback, which is the useful half. */
+export function hapticsSdk<T>(): T | null {
+  try {
+    return require('expo-haptics') as T;
+  } catch {
+    return null;
+  }
+}
+
 /** App Tracking Transparency. iOS only; a no-op elsewhere. */
 export function trackingSdk<T>(): T | null {
   try {

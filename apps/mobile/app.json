@@ -55,7 +55,8 @@
         {
           "userTrackingPermission": "Allow tracking so the free scan videos can show relevant ads. Declining does not reduce the scans you earn - the ads are just less relevant."
         }
-      ]
+      ],
+      "expo-audio"
     ]
   }
 }

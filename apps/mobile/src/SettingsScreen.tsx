@@ -78,6 +78,8 @@ export default function SettingsScreen({
   onSync,
   syncing,
   syncNote,
+  sound,
+  onToggleSound,
   onArmCapture,
   capturing,
   captureNote,
@@ -95,6 +97,8 @@ export default function SettingsScreen({
   onSync: () => void;
   syncing: boolean;
   syncNote: string | null;
+  sound: boolean;
+  onToggleSound: () => void;
   onArmCapture: () => void;
   capturing: boolean;
   captureNote: string | null;
@@ -201,6 +205,24 @@ export default function SettingsScreen({
         />
       </Card>
       <Text style={styles.hint}>{allowanceLabel(ent)}</Text>
+
+      <SectionLabel>Feedback</SectionLabel>
+      <Card style={styles.card}>
+        {/*
+          * A sound that fires on every card has to be switchable, or the answer
+          * to "it is annoying" is uninstalling. The haptic stays either way -
+          * it is silent, and in a quiet room it is the half people keep.
+          */}
+        <Row
+          label="Sound on each card"
+          value={sound ? 'On' : 'Off'}
+          onPress={onToggleSound}
+          last
+        />
+      </Card>
+      <Text style={styles.hint}>
+        The phone taps whether or not the sound is on.
+      </Text>
 
       <SectionLabel>Prices</SectionLabel>
       <Card style={styles.card}>

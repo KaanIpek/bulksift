@@ -26,3 +26,11 @@ export function appleAuthSdk<T>(): T | null {
 export function trackingSdk<T>(): T | null {
   return null;
 }
+
+export function audioSdk<T>(): T | null {
+  return null;
+}
+
+export function hapticsSdk<T>(): T | null {
+  return null;
+}
