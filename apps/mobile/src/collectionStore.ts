@@ -19,6 +19,7 @@ import { normalise, type Entitlement } from './entitlement';
 import { readBases } from './merge';
 import type { Bases } from './sync';
 import { loadLibrary, type Library } from './library';
+import { normaliseRule, type SortRule } from './sort';
 
 const FILE = 'bulksift-collection.json';
 
@@ -37,6 +38,11 @@ export interface Saved {
    * costs nothing.
    */
   bases: Bases;
+  /**
+   * The sort lines. Optional so every existing caller and every existing file
+   * stays valid; a file without it reads as "sorting off".
+   */
+  sort?: SortRule;
 }
 
 /**
@@ -68,6 +74,7 @@ function parse(raw: string | null, at: number): Saved {
       library: loadLibrary(parsed.library ?? parsed, at),
       entitlement: normalise(parsed.entitlement, at),
       bases: readBases(parsed.bases),
+      sort: normaliseRule(parsed.sort),
     };
   } catch {
     return { library: loadLibrary(null, at), entitlement: normalise(null, at), bases: {} };

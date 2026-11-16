@@ -55,6 +55,7 @@ import { cameraPixels, lumaSource, toWorkGrid, type FrameInfo } from './frame';
 import { isNativeAvailable, nativeDescriber, nativeStages } from '../modules/bulksift-detect';
 import { runSelfTest } from './selfTest';
 import { cardScanned } from './feedback';
+import { DEFAULT_RULE, pileOfHit, type SortRule, type Tally } from './sort';
 import type { CapturedRead } from './capture';
 
 /**
@@ -139,8 +140,14 @@ export default function ScannerScreen({
   onCaptured,
   showDiag,
   scansLeft,
+  sortRule,
+  piles,
 }: {
   engine: LoadedEngine;
+  /** The sort lines. Off (or absent) means every card sounds the same. */
+  sortRule?: SortRule;
+  /** The three piles so far; shown only while sorting is on. */
+  piles?: Tally | null;
   onHit: (hit: ScanHit) => string;
   sessionCount: number;
   sessionValue: number;
@@ -210,6 +217,30 @@ export default function ScannerScreen({
    */
 
   const engineRef = useRef<LoadedEngine | null>(null);
+  /*
+   * The sort rule, read from the frame callback.
+   *
+   * `onPixels` is created once (it is handed to the camera thread, and a new
+   * identity rebuilds the pipeline), so it cannot close over a prop. A ref
+   * written on every render is the same pattern `engineRef` uses above.
+   */
+  const sortRef = useRef<SortRule>(sortRule ?? DEFAULT_RULE);
+  sortRef.current = sortRule ?? DEFAULT_RULE;
+  /*
+   * `onHit`, read the same way - and this one was a real bug, not a tidy-up.
+   *
+   * `onPixels` below has an empty dependency list, so it used to call the
+   * `onHit` from the render in which this screen MOUNTED. The app's `onHit`
+   * closes over the allowance in order to refuse a scan when it has run out,
+   * so the frame callback kept asking a snapshot of the allowance taken when
+   * the tab was opened: thirty scans left, forever. Spending still happened
+   * (it is a functional update) and floors at zero, so nothing went negative -
+   * the limit simply never fired until the user left the tab and came back.
+   * Anyone who sat down with a box scanned the whole box on the free plan and
+   * never saw the paywall.
+   */
+  const onHitRef = useRef(onHit);
+  onHitRef.current = onHit;
   const lastTickRef = useRef(0);
   const fpsRef = useRef(0);
   const seqRef = useRef(0);
@@ -443,11 +474,12 @@ export default function ScannerScreen({
          * that a card registered. It never blocks: the call returns
          * immediately and the frame thread carries on.
          */
-        cardScanned(!hit.ambiguity);
+        const pile = pileOfHit(hit, (id) => e.scanner.pricesFor(id), sortRef.current);
+        cardScanned(!hit.ambiguity, pile);
         // `onHit` returns the collection key it wrote to, so a row in the feed
         // can undo or redirect itself without searching the collection for a
         // card that may since have been merged into an existing pile.
-        const entryKey = onHit(hit);
+        const entryKey = onHitRef.current(hit);
         onRecent((prev) => [
           {
             key: `${hit.card.i}-${seqRef.current++}`,
@@ -459,6 +491,7 @@ export default function ScannerScreen({
             rarity: hit.card.r ?? null,
             price: hit.topMarket,
             unsure: !!hit.ambiguity,
+            pile,
             others: (hit.runnersUp ?? []).slice(0, 3).map((x) => ({
               cardId: x.card.i,
               name: x.card.n,
@@ -682,6 +715,7 @@ export default function ScannerScreen({
         scansLeft={scansLeft ?? null}
         value={sessionValue}
         count={sessionCount}
+        piles={sortRule?.on ? piles ?? null : null}
         scanning={scanning}
         onReset={onResetSession}
         onToggle={() => {

@@ -16,11 +16,14 @@
 import { Platform } from 'react-native';
 
 import { audioSdk, hapticsSdk } from './native';
+import type { Pile } from './sort';
 
 type Player = { play: () => void; seekTo: (s: number) => Promise<void> | void };
 
 let scan: Player | null = null;
 let check: Player | null = null;
+let bulk: Player | null = null;
+let pull: Player | null = null;
 let tried = false;
 let enabled = true;
 
@@ -57,13 +60,17 @@ function load(): void {
     });
     scan = audio.createAudioPlayer(require('../assets/sound/scan.wav'));
     check = audio.createAudioPlayer(require('../assets/sound/check.wav'));
+    bulk = audio.createAudioPlayer(require('../assets/sound/bulk.wav'));
+    pull = audio.createAudioPlayer(require('../assets/sound/pull.wav'));
   } catch {
     scan = null;
     check = null;
+    bulk = null;
+    pull = null;
   }
 }
 
-function tap(kind: 'light' | 'warn'): void {
+function tap(kind: 'light' | 'warn' | 'success'): void {
   if (Platform.OS !== 'ios') return;
   const h = hapticsSdk<{
     impactAsync: (s: string) => Promise<void>;
@@ -74,6 +81,7 @@ function tap(kind: 'light' | 'warn'): void {
   if (!h) return;
   try {
     if (kind === 'warn') void h.notificationAsync(h.NotificationFeedbackType.Warning);
+    else if (kind === 'success') void h.notificationAsync(h.NotificationFeedbackType.Success);
     else void h.impactAsync(h.ImpactFeedbackStyle.Light);
   } catch { /* a phone that will not buzz is not a problem worth reporting */ }
 }
@@ -85,8 +93,30 @@ function tap(kind: 'light' | 'warn'): void {
  * quieter tone, because it is not a failure - the card was found and only the
  * price is ambiguous - but it should not sound identical to a clean hit.
  */
-export function cardScanned(sure: boolean): void {
+export function cardScanned(sure: boolean, pile: Pile | null = null): void {
   load();
+  /*
+   * With sorting on, the pile decides the cue and `sure` does not.
+   *
+   * An unsettled printing has already been judged by its dearest possibility
+   * (see sort.ts), so "unsure" is folded into which pile the card landed on -
+   * and a fourth sound for it would be one more thing to tell apart by ear at a
+   * card a second. The pull cue also gets the one haptic that feels different,
+   * so the stop signal survives a muted phone.
+   */
+  if (pile) {
+    tap(pile === 'pull' ? 'success' : 'light');
+    if (!enabled) return;
+    // A missing sort sound falls back to the scan bell rather than to silence:
+    // a card that makes no sound reads as a card that did not register.
+    const q = (pile === 'pull' ? pull : pile === 'bulk' ? bulk : scan) ?? scan;
+    if (!q) return;
+    try {
+      void q.seekTo(0);
+      q.play();
+    } catch { /* silence is survivable */ }
+    return;
+  }
   tap(sure ? 'light' : 'warn');
   if (!enabled) return;
   const p = sure ? scan : check;

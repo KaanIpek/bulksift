@@ -45,9 +45,14 @@ def strike(buf, at, freq, gain, decay):
 
 
 def write(name, buf):
+    write_at(name, buf, 0.82)
+
+
+def write_at(name, buf, level):
+    """Write `buf` normalised so its peak sits at `level` of full scale."""
     peak = max(1e-9, max(abs(x) for x in buf))
     # Leave headroom: a sample that clips reads as a click on a phone speaker.
-    scale = 0.82 / peak
+    scale = level / peak
     frames = b"".join(
         struct.pack("<h", int(max(-1.0, min(1.0, x * scale)) * 32767)) for x in buf
     )
@@ -81,6 +86,36 @@ def main():
     soft = [0.0] * n
     strike(soft, 0.0, 760.0, 1.0, 0.140)
     write("check.wav", soft)
+
+    # --- Sort mode: three piles, three sounds (apps/mobile/src/sort.ts) -----
+    #
+    # In a sort session the ear does the sorting, so the three cues have to be
+    # told apart WITHOUT attention - by someone talking, with music on, at a
+    # card a second. They therefore differ in three ways at once (pitch, number
+    # of strikes, length), not one. "keep" reuses scan.wav above: it is the
+    # sound people already know means "that one landed and it is worth
+    # something".
+
+    # Bulk: one low, dull, short knock. Ninety-five cards in a hundred make this
+    # sound, so it is the quietest and shortest thing here (peak 0.45, 110 ms) -
+    # a tick that says "counted, keep going" and can be heard four hundred times
+    # without anyone reaching for the mute switch. Low enough (520 Hz) that it
+    # cannot be mistaken for either bell.
+    n = int(0.11 * RATE)
+    tock = [0.0] * n
+    strike(tock, 0.0, 520.0, 1.0, 0.030)
+    write_at("bulk.wav", tock, 0.45)
+
+    # Pull: three rising strikes, a major triad climbing above the scan bell,
+    # with a long tail. It is the only cue with three attacks and the only one
+    # still ringing when the next card would normally arrive - which is the
+    # point: this is the one sound that should make the hands stop.
+    n = int(0.80 * RATE)
+    pull = [0.0] * n
+    strike(pull, 0.000, 1568.0, 0.70, 0.110)   # G6
+    strike(pull, 0.085, 1976.0, 0.85, 0.140)   # B6
+    strike(pull, 0.170, 2349.0, 1.00, 0.380)   # D7
+    write("pull.wav", pull)
 
 
 if __name__ == "__main__":

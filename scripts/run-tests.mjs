@@ -100,6 +100,7 @@ const SUITE = [
   { name: 'worklet-payload', dir: mobileTestDir, needs: [] },
   { name: 'thumbs', dir: mobileTestDir, needs: [] },
   { name: 'entitlement', dir: mobileTestDir, needs: [] },
+  { name: 'sort', dir: mobileTestDir, needs: [] },
   { name: 'library', dir: mobileTestDir, needs: [] },
   { name: 'prices', dir: mobileTestDir, needs: [] },
   { name: 'merge', dir: mobileTestDir, needs: [] },

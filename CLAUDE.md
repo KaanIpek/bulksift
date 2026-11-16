@@ -146,6 +146,46 @@ ka-ching on every card.
 Connect products (all five), RevenueCat (all five packages, `pro` entitlement),
 GitHub Pages for the privacy and support URLs. Details and keys: `docs/SETUP.md`.
 
+### 2026-11-16 — repositioned as a sorting station (branch `sort-mode`, not on a device yet)
+
+Market research that day (sources in `D:\cowork\RLDGames-Ops\CLAUDE.md`, "16 Nov 2026") changed
+what this app is for. The short version:
+
+- **"Scanner" is a lost position.** Rare Candy's scanner is free and unlimited with auto-scan,
+  TCGplayer has Live Scan in beta for sellers, Collectr holds search with 5M+ installs.
+  Realistic 12-month range for a new scanner: $100-$1,500/month; under $5K with ~85-90% odds.
+- **The open comparison is hardware, not apps:** a $799 hopper (sold out) and a $3,000 robot at
+  ~250 cards/hour. So the app now answers "which cards do I take OUT of the box", by ear.
+- **`pokemontcg.io` is deprecated and its keys die on 1 March 2027.** Anything that still
+  fetches from it (card art, catalogue rebuilds) must move before then.
+- **Price data for a paid app:** TCGplayer's API is closed to new developers; JustTCG's paid
+  plans ($19+/month) carry a commercial licence and allow server caching. Decide before launch.
+- **Store risk:** Apple rejected an AI card scanner under 4.1 for brand elements in the name and
+  screenshots; a disclaimer in the description was not enough. Keep the name neutral and keep
+  card art out of the screenshots.
+
+What was built (all in `apps/mobile`, 24 suites green, UI checked in the web target):
+
+- `src/sort.ts` — three piles (bulk / keep / pull) from two lines the user sets with a thumb.
+  Doubt resolves upward: an unpriced card is kept, and every card is judged by its **dearest**
+  printing, because the camera matches artwork and cannot see foil. `test/sort.test.ts`.
+- Three sounds, told apart by pitch, strike count and length (`tools/make_sounds.py`):
+  `bulk.wav` low tick, `scan.wav` the bell (keep), `pull.wav` a rising triad. Pull also gets
+  the success haptic so the stop signal survives a muted phone.
+- Scan screen: a pile tag on every row and a PULL / KEEP / BULK strip under the totals.
+  Settings → Sorting. The rule is saved in the collection file (`sort`, optional).
+- **A paywall bug, fixed:** `onPixels` has an empty dependency list and called the `onHit`
+  from the render the screen mounted with, so the allowance check read a snapshot taken when
+  the tab was opened. The free limit never fired inside one sitting. Now read through a ref.
+  **Not yet proven on a device** — the camera screen does not exist on web. Check it on the
+  next TestFlight build: scan past the free allowance without leaving the tab and the paywall
+  must appear.
+
+Not done, and not mine to decide alone: prices (a Seller tier around $19.99/month with
+TCGplayer/eBay CSV and a one-time "7 days unlimited" pass were the research's suggestion), and
+the kill rule the research proposed — **90 days after launch, under ~$1K MRR or 50 paying
+sellers, stop.**
+
 ### Next, in the order I would do it
 
 1. **The remaining recognition gap — needs one real frame.** Holos and Special

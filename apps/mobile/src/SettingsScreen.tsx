@@ -23,6 +23,7 @@ import {
 } from './auth';
 import { allowanceLabel, scansLeft, type Entitlement } from './entitlement';
 import { freshness } from './prices';
+import { cycleKeep, cyclePull, stepLabel, type SortRule } from './sort';
 import { restore, storeState } from './store';
 import { c, shadow, t } from './ui/theme';
 import { Button, Card, SectionLabel } from './ui/parts';
@@ -80,6 +81,8 @@ export default function SettingsScreen({
   syncNote,
   sound,
   onToggleSound,
+  sortRule,
+  onSortRule,
   onArmCapture,
   capturing,
   captureNote,
@@ -88,6 +91,8 @@ export default function SettingsScreen({
   onRunSelfTest,
   selfTest,
 }: {
+  sortRule: SortRule;
+  onSortRule: (next: SortRule) => void;
   ent: Entitlement;
   priceUpdated: string;
   onRefreshPrices: () => void;
@@ -205,6 +210,44 @@ export default function SettingsScreen({
         />
       </Card>
       <Text style={styles.hint}>{allowanceLabel(ent)}</Text>
+
+      <SectionLabel>Sorting</SectionLabel>
+      <Card style={styles.card}>
+        {/*
+          * Off by default. Someone cataloguing a binder wants one sound per
+          * card; someone clearing a 5,000-count box wants to be told which
+          * forty to take out. The second person turns this on once.
+          */}
+        <Row
+          label="Sort by value"
+          value={sortRule.on ? 'On' : 'Off'}
+          onPress={() => onSortRule({ ...sortRule, on: !sortRule.on })}
+          last={!sortRule.on}
+        />
+        {sortRule.on ? (
+          <>
+            <Row
+              label="Keep at"
+              value={`${stepLabel(sortRule.keepAt)} and up`}
+              onPress={() => onSortRule(cycleKeep(sortRule))}
+            />
+            <Row
+              label="Pull at"
+              value={`${stepLabel(sortRule.pullAt)} and up`}
+              onPress={() => onSortRule(cyclePull(sortRule))}
+              last
+            />
+          </>
+        ) : null}
+      </Card>
+      <Text style={styles.hint}>
+        {sortRule.on
+          ? 'Three sounds, so you never look up: a low tick for bulk, the bell '
+            + 'for a keeper, a rising chime for a pull. A card is judged by its '
+            + 'most valuable printing, and one with no price is kept, not binned.'
+          : 'Hear which cards to take out of the box as they pass, instead of '
+            + 'reading a price for each one.'}
+      </Text>
 
       <SectionLabel>Feedback</SectionLabel>
       <Card style={styles.card}>

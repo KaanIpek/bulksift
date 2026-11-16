@@ -20,6 +20,12 @@ import CardImage from './CardImage';
 import { CheckIcon, ChevronIcon, ScanIcon, TrashIcon } from './icons';
 import { Badge } from './parts';
 import { c, money, r, s, t } from './theme';
+import { PILE_LABEL, type Pile, type Tally } from '../sort';
+
+/** One colour per pile, used by the row tag and the tally alike. */
+const PILE_TONE: Record<Pile, 'plain' | 'good' | 'accent'> = {
+  bulk: 'plain', keep: 'good', pull: 'accent',
+};
 
 /** How well the card is framed, which is the one thing the user controls. */
 export type Aim = 'idle' | 'near' | 'good';
@@ -44,6 +50,8 @@ export interface ScannedRow {
   rarity: string | null;
   price: number | null;
   unsure: boolean;
+  /** Which pile sorting put it on. Absent when sorting is off. */
+  pile?: Pile | null;
   /** What the matcher's next best answers were. */
   others: Candidate[];
 }
@@ -198,9 +206,18 @@ const CORNERS = [
  * worth so far; the collection tab is where any of it gets examined.
  */
 export function ScanSummary({
-  value, count, scanning, scansLeft, onToggle, onReset,
+  value, count, scanning, scansLeft, onToggle, onReset, piles,
 }: {
   value: number; count: number; scanning: boolean;
+  /**
+   * The three piles so far, when sorting is on.
+   *
+   * Counts first and largest: mid-sort the question is "how many did I pull",
+   * and the dollar figure beside it is what makes the pile worth walking over
+   * to. Bulk shows no value at all - its whole meaning is that it is not worth
+   * adding up.
+   */
+  piles?: Tally | null;
   /**
    * Scans remaining today, or null when there is no limit.
    *
@@ -218,6 +235,7 @@ export function ScanSummary({
   onReset: () => void;
 }) {
   return (
+    <View>
     <View style={styles.summary}>
       {/*
         Resetting is a long press rather than a button.
@@ -262,6 +280,28 @@ export function ScanSummary({
           {scanning ? 'Pause' : 'Resume'}
         </Text>
       </Pressable>
+    </View>
+    {piles ? (
+      <View style={styles.pileRow}>
+        {(['pull', 'keep', 'bulk'] as const).map((p) => (
+          <View key={p} style={styles.pileCell}>
+            <Text
+              style={[
+                styles.pileName,
+                p === 'pull' && { color: c.accent },
+                p === 'keep' && { color: c.good },
+              ]}
+            >
+              {PILE_LABEL[p]}
+            </Text>
+            <Text style={styles.pileCount}>{piles[p].count}</Text>
+            {p !== 'bulk' && piles[p].count > 0 ? (
+              <Text style={styles.pileValue} numberOfLines={1}>{money(piles[p].value)}</Text>
+            ) : null}
+          </View>
+        ))}
+      </View>
+    ) : null}
     </View>
   );
 }
@@ -333,6 +373,7 @@ export function ScanFeed({
                 <Text style={styles.feedName} numberOfLines={1}>{x.name}</Text>
                 <Text style={styles.feedMeta} numberOfLines={1}>{x.set} · #{x.number}</Text>
               </View>
+              {x.pile ? <Badge label={PILE_LABEL[x.pile]} tone={PILE_TONE[x.pile]} /> : null}
               {x.unsure ? <Badge label="CHECK" tone="warn" /> : null}
               <Text style={styles.feedPrice}>{money(x.price)}</Text>
               <ChevronIcon size={13} color={c.faint} dir={isOpen ? 'up' : 'down'} />
@@ -512,6 +553,15 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'], marginTop: 2,
   },
   countCol: { alignItems: 'flex-end' },
+  pileRow: {
+    flexDirection: 'row', gap: s.sm,
+    paddingHorizontal: s.lg, paddingVertical: s.sm,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  pileCell: { flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  pileName: { ...t.section, color: c.faint },
+  pileCount: { fontSize: 17, fontWeight: '800', color: c.text, fontVariant: ['tabular-nums'] },
+  pileValue: { ...t.tiny, color: c.money, fontVariant: ['tabular-nums'], flexShrink: 1 },
   count: {
     fontSize: 22, fontWeight: '800', color: c.text, fontVariant: ['tabular-nums'],
     marginTop: 2,

@@ -57,6 +57,9 @@ import { authState, restoreSession } from './src/auth';
 import { runSelfTest } from './src/selfTest';
 import { shareCapture, type CapturedRead } from './src/capture';
 import { setSoundEnabled } from './src/feedback';
+import {
+  DEFAULT_RULE, emptyTally, pileFor, pileOfHit, sortPrice, tally, type SortRule,
+} from './src/sort';
 import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
 import {
@@ -173,6 +176,17 @@ export default function App() {
   const [session, setSession] = useState({ count: 0, value: 0 });
 
   /**
+   * The sort lines, and how many cards have landed on each pile this session.
+   *
+   * The tally is a ledger for the same reason the session total above is: one
+   * card on, one card off, and it says only what it was told. It is kept beside
+   * `session` rather than inside it so that turning sorting on half-way through
+   * a box does not have to invent piles for the cards already passed.
+   */
+  const [sortRule, setSortRule] = useState<SortRule>(DEFAULT_RULE);
+  const [piles, setPiles] = useState(emptyTally);
+
+  /**
    * The last few cards, held here rather than in the scanner.
    *
    * ScannerScreen is unmounted whenever another tab is on top, so keeping this
@@ -180,6 +194,9 @@ export default function App() {
    * the user might have wanted to reach.
    */
   const [recent, setRecent] = useState<ScannedRow[]>([]);
+  /** Read by `undoScan`, which is created once and cannot close over the list. */
+  const recentRef = useRef<ScannedRow[]>(recent);
+  recentRef.current = recent;
 
   /*
    * The active collection, unwrapped.
@@ -253,6 +270,7 @@ export default function App() {
         if (cancelled) return;
         setLibrary(data.library);
         setBases(data.bases);
+        setSortRule(data.sort ?? DEFAULT_RULE);
         // Refill on open, not on a timer: an app that was closed overnight has
         // to notice the new day the moment it is looked at.
         setEnt(refill(data.entitlement, Date.now()));
@@ -273,10 +291,10 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     const id = setTimeout(() => {
-      void save({ library, entitlement: ent, bases });
+      void save({ library, entitlement: ent, bases, sort: sortRule });
     }, 700);
     return () => clearTimeout(id);
-  }, [library, ent, bases, loaded]);
+  }, [library, ent, bases, sortRule, loaded]);
 
   /*
    * Record today's total whenever it moves.
@@ -391,8 +409,12 @@ export default function App() {
     // Outside the updater: React may re-invoke one, and a double-counted
     // session is precisely the drifting total this replaced.
     setSession((s) => ({ count: s.count + 1, value: s.value + (pick.price ?? 0) }));
+    // The same call the scan screen makes for the sound, with the same inputs,
+    // so the pile that was heard is the pile that is counted.
+    const pile = pileOfHit(hit, (id) => engine?.scanner.pricesFor(id) ?? [], sortRule);
+    if (pile) setPiles((t) => tally(t, pile, pick.price));
     return entryKey(hit.card.i, pick.name, 'NM');
-  }, [engine, ent]);
+  }, [engine, ent, sortRule]);
 
   /**
    * Take one copy back off a pile - the scan feed's "that was not a card".
@@ -403,6 +425,17 @@ export default function App() {
    */
   const undoScan = useCallback((key: string) => {
     setEnt(refund);
+    // Take it off the pile it was counted on. The row remembers which, because
+    // the rule may have been changed since and re-deriving it would then take
+    // the card off a pile it was never on.
+    const row = recentRef.current.find((r) => r.entryKey === key);
+    if (row?.pile) {
+      // Outside the updater below: React may re-invoke one, and a card taken
+      // off its pile twice is the drifting total the ledger exists to prevent.
+      const pile = row.pile;
+      const value = row.price;
+      setPiles((t) => tally(t, pile, value, -1));
+    }
     setEntries((prev) => {
       const found = prev.find((e) => e.key === key);
       if (!found) return prev;
@@ -433,8 +466,26 @@ export default function App() {
     // The card count is unchanged - one card was scanned and it is still one
     // card. Only what it is worth moves.
     setSession((s) => ({ ...s, value: Math.max(0, s.value + (pick.price ?? 0) - (was ?? 0)) }));
-    return entryKey(cardId, pick.name, 'NM');
-  }, [engine]);
+    const nextKey = entryKey(cardId, pick.name, 'NM');
+    /*
+     * A corrected card may belong on a different pile, so move it - and point
+     * the row at its new collection key, which also fixes an older gap: the
+     * feed tracked the new key privately, so a later undo could not find the
+     * row here and left it on screen.
+     */
+    const row = recentRef.current.find((r) => r.entryKey === key);
+    const nextPile = row?.pile
+      ? pileFor(sortPrice(variants.map((v) => v.market)), sortRule)
+      : null;
+    if (row?.pile && nextPile) {
+      const from = row.pile;
+      setPiles((t) => tally(tally(t, from, was, -1), nextPile, pick.price));
+    }
+    setRecent((prev) => prev.map((r) => (
+      r.entryKey === key ? { ...r, entryKey: nextKey, pile: nextPile ?? r.pile } : r
+    )));
+    return nextKey;
+  }, [engine, entries, sortRule]);
 
   /**
    * Add by hand, with every choice made explicitly.
@@ -606,9 +657,13 @@ export default function App() {
               onHit={onHit}
               sessionCount={session.count}
               sessionValue={session.value}
+              sortRule={sortRule}
+              piles={piles}
               recent={recent}
               onRecent={setRecent}
-              onResetSession={() => { setSession({ count: 0, value: 0 }); setRecent([]); }}
+              onResetSession={() => {
+                setSession({ count: 0, value: 0 }); setPiles(emptyTally()); setRecent([]);
+              }}
               onOpenCollection={() => setTab('collection')}
               showDiag={showDiag}
               scansLeft={scansLeft(ent)}
@@ -630,8 +685,11 @@ export default function App() {
               sessionValue={session.value}
               recent={entries.slice(0, 4)}
               scansLeft={scansLeft(ent)}
+              sortRule={sortRule}
               onOpenCollection={() => setTab('collection')}
-              onResetSession={() => { setSession({ count: 0, value: 0 }); setRecent([]); }}
+              onResetSession={() => {
+                setSession({ count: 0, value: 0 }); setPiles(emptyTally()); setRecent([]);
+              }}
             />
           )
         ) : null}
@@ -714,6 +772,8 @@ export default function App() {
               setSound(next);
               setSoundEnabled(next);
             }}
+            sortRule={sortRule}
+            onSortRule={setSortRule}
             onArmCapture={() => {
               if (!engine) return;
               engine.scanner.captureNext();
@@ -844,8 +904,10 @@ export default function App() {
  * It never ships: `ScannerScreen` is null only on web.
  */
 function ScanPreview({
-  sessionCount, sessionValue, recent, scansLeft, onOpenCollection, onResetSession,
+  sessionCount, sessionValue, recent, scansLeft, sortRule, onOpenCollection, onResetSession,
 }: {
+  /** So the sort tags and the pile strip can be looked at in a browser. */
+  sortRule: SortRule;
   sessionCount: number;
   sessionValue: number;
   recent: Entry[];
@@ -865,6 +927,7 @@ function ScanPreview({
     rarity: e.rarity,
     price: e.unitPrice,
     unsure: !!e.needsPrinting,
+    pile: sortRule.on ? pileFor(e.unitPrice, sortRule) : null,
     // Stand-ins for the matcher's runners-up, which only exist on a real scan.
     others: recent.filter((_, j) => j !== i).slice(0, 3).map((o) => ({
       cardId: o.cardId, name: o.name, set: o.setName,
@@ -892,6 +955,13 @@ function ScanPreview({
         scansLeft={scansLeft}
         value={sessionValue}
         count={sessionCount}
+        piles={sortRule.on
+          // Built from the rows on show, since nothing is being scanned here.
+          ? recent.reduce(
+            (acc, e) => tally(acc, pileFor(e.unitPrice, sortRule), e.unitPrice),
+            emptyTally(),
+          )
+          : null}
         scanning={scanning}
         onToggle={() => setScanning((v) => !v)}
         onReset={onResetSession}
