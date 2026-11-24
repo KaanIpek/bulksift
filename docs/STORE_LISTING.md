@@ -36,9 +36,14 @@ Dropping it is a one-word edit.
 - **Screenshots**, 6.9" (1320 x 2868) and 6.5" (1242 x 2688), from the phone.
   The list is below. Keep real card artwork out of the first two: the surviving
   apps blur the card or show an invented one.
-- **A review screenshot for each of the five products** (they are
-  `MISSING_METADATA` for that reason alone; names and prices are set). One
-  picture of the paywall, taken on the phone, serves all five.
+- ~~A review screenshot for each of the five products.~~ Done 2026-11-24: all
+  five are `READY_TO_SUBMIT`. The picture is the browser render in
+  `docs/review/` scaled to 1242 x 2688 (Apple refuses any size that is not a
+  device screenshot size, with `IMAGE_INCORRECT_DIMENSIONS`). It shows the real
+  screen with the US prices typed in, and "Not available yet" on the video
+  button because there are no ads in a browser. **Replace it with a phone
+  capture before submitting** if the phone's paywall looks any different.
+  The screenshot was not the only thing missing - see `docs/SETUP.md`.
 - **Content rights declaration** - the question is whether the app shows
   third-party content and whether the owner has the right to. It shows card
   pictures. That answer is the owner's to give, so it was left blank.

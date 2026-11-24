@@ -73,7 +73,14 @@ To change it, edit there and run `supabase functions deploy delete-account`.
 
 ## Done: App Store Connect products
 
-All five, priced, localised, and available in all 175 countries.
+All five, priced, localised, and available in all 175 countries - as of
+2026-11-24. This line said so before that and was wrong twice: the 200-scan
+pack had no availability record at all (on sale nowhere), and the subscription
+group had no localisation, which on its own keeps both subscriptions in
+`MISSING_METADATA`. Neither shows up as an error anywhere; the product simply
+does not load. All five now read `READY_TO_SUBMIT`. A product in
+`MISSING_METADATA` is not returned to the app by the store, so until this was
+fixed no TestFlight build could have shown a plan or a pack on the paywall.
 
 | Product ID | Type | Price |
 |---|---|---|

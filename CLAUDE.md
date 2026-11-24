@@ -301,6 +301,15 @@ owner's decisions on budget, the live offer, a weekly product and its price,
 and whether the Meta SDK goes in (without it Meta optimises for clicks, not
 installs).
 
+**The products themselves were not sellable, and nothing said so.** All five
+sat in `MISSING_METADATA`, which the notes put down to a missing review
+screenshot. Uploading one fixed two of them. The 200-scan pack had no
+availability record (on sale in no country) and the subscription group had no
+localisation; both are now filled in and all five read `READY_TO_SUBMIT`.
+A product in that state is not returned by the store, so the paywall on every
+build so far would have had nothing to list - which the next build will show
+as "The store has not listed a plan yet" if it is ever true again.
+
 ### Next, in the order I would do it
 
 1. **The remaining recognition gap — needs one real frame.** Holos and Special
