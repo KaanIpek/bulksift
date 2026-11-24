@@ -15,11 +15,15 @@ import { acceptable, type RefreshOutcome } from './prices';
 /**
  * Where the published price file lives.
  *
- * Null until it is hosted, and everything below degrades to "the snapshot that
- * shipped with the app is what you have" - a working app rather than a broken
+ * GitHub Pages, beside the privacy and support pages, rebuilt once a day by
+ * `.github/workflows/prices.yml`. It was null until 2026-11-24, and in the three
+ * months the app spent on the snapshot it shipped with, 5.4% of the catalogue
+ * moved to a different sorting pile - so this is a correctness fix, not a
+ * feature. Set it to null and everything below degrades to "the snapshot that
+ * shipped with the app is what you have": a working app rather than a broken
  * one, and the reason recognition and pricing never needed a network.
  */
-export const PRICE_HOST: string | null = null;
+export const PRICE_HOST: string | null = 'https://kaanipek.github.io/bulksift/prices';
 
 /** The tiny file checked before deciding to download the big one. */
 interface Manifest {

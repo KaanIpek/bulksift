@@ -18,13 +18,24 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
-UA = {"User-Agent": "Mozilla/5.0 (BulkSift prices)"}
+UA = {"User-Agent": "Mozilla/5.0"}
 TCGCSV = "https://tcgcsv.com/tcgplayer"
 CATEGORY = 3
 MIN_KEEP_RATIO = 0.90
+# catalogue.json is 18 MB and is not committed, so the scheduled job cannot read
+# it. The only thing this script needs from it is which TCGplayer product each
+# card is - 0.5 MB - so that is written beside it and committed. Every local
+# run rewrites it, which keeps it from drifting behind a rebuilt catalogue.
+PRICE_MAP = os.path.join(DATA, "price_map.json")
 
 
-def get(url, tries=4, timeout=45):
+# tcgcsv throttles by answering 401. Measured 2026-11-24: one run at 8 workers
+# went through in 11 s, and a second run straight after it lost 2,520 cards to
+# 401s on dozens of sets. So: few workers, and a wait that doubles.
+WORKERS = 3
+
+
+def get(url, tries=5, timeout=45):
     last = None
     for i in range(tries):
         try:
@@ -32,44 +43,57 @@ def get(url, tries=4, timeout=45):
                 urllib.request.Request(url, headers=UA), timeout=timeout).read())
         except Exception as e:
             last = e
-            time.sleep(1.0 * (i + 1))
+            time.sleep(2.0 * (2 ** i))
     raise RuntimeError(f"{url}: {last}")
 
 
 def main():
     cat_path = os.path.join(DATA, "catalogue.json")
-    if not os.path.exists(cat_path):
-        print("no catalogue.json - run tools/build_catalogue.py first")
-        return 1
-    cat = json.load(open(cat_path, encoding="utf-8"))
     by_product = {}
-    for c in cat:
-        pid = c.get("tcgplayerProductId")
-        if pid:
-            by_product.setdefault(pid, []).append(c["id"])
-    print(f"{len(cat)} cards, {len(by_product)} distinct TCGplayer products")
+    if os.path.exists(cat_path):
+        cat = json.load(open(cat_path, encoding="utf-8"))
+        for c in cat:
+            pid = c.get("tcgplayerProductId")
+            if pid:
+                by_product.setdefault(int(pid), []).append(c["id"])
+        tmp = PRICE_MAP + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({str(k): v for k, v in sorted(by_product.items())}, f,
+                      separators=(",", ":"))
+        os.replace(tmp, PRICE_MAP)
+        print(f"{len(cat)} cards, {len(by_product)} distinct TCGplayer products "
+              f"(price_map.json rewritten)")
+    elif os.path.exists(PRICE_MAP):
+        raw = json.load(open(PRICE_MAP, encoding="utf-8"))
+        by_product = {int(k): v for k, v in raw.items()}
+        print(f"no catalogue.json; {len(by_product)} products from price_map.json")
+    else:
+        print("no catalogue.json and no price_map.json - run tools/build_catalogue.py first")
+        return 1
 
     groups = get(f"{TCGCSV}/{CATEGORY}/groups")["results"]
     print(f"fetching prices for {len(groups)} sets")
 
     rows = []
+    failed = []
 
     def fetch(g):
         try:
             return get(f"{TCGCSV}/{CATEGORY}/{g['groupId']}/prices")["results"]
         except Exception as e:
             print(f"  group {g['groupId']} {g['name']}: {e}")
+            failed.append(g["groupId"])
             return []
 
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         for res in ex.map(fetch, groups):
             rows.extend(res)
     print(f"  {len(rows)} price rows in {time.time()-t0:.0f}s")
 
     prices = {}
     for r in rows:
-        ids = by_product.get(r["productId"])
+        ids = by_product.get(int(r["productId"]))
         if not ids:
             continue
         if r.get("marketPrice") is None and r.get("lowPrice") is None:
@@ -84,13 +108,32 @@ def main():
 
     out_path = os.path.join(DATA, "prices.json")
     previous = 0
+    carried = 0
     if os.path.exists(out_path):
         try:
-            previous = len(json.load(open(out_path, encoding="utf-8"))["prices"])
+            before = json.load(open(out_path, encoding="utf-8"))["prices"]
+            previous = len(before)
+            # A set that could not be fetched today keeps yesterday's prices.
+            # Dropping them instead would send every card in that set to the
+            # keep pile as "unpriced", which is the safe direction but a wrong
+            # answer the user can see. Only when something failed: with a clean
+            # run, a card missing from the feed really has been delisted.
+            if failed:
+                for cid, entry in before.items():
+                    if cid not in prices:
+                        prices[cid] = entry
+                        carried += 1
         except Exception:
             previous = 0
 
+    if failed:
+        print(f"  {len(failed)} sets could not be fetched; "
+              f"{carried} cards keep their previous price")
     print(f"  priced {len(prices)} cards (previous file had {previous})")
+    if len(failed) > len(groups) * 0.25:
+        print("REFUSING to publish: more than a quarter of the sets failed. "
+              "The existing prices.json is left in place.")
+        return 1
     if previous and len(prices) < previous * MIN_KEEP_RATIO:
         print(f"REFUSING to publish: only {len(prices)/previous*100:.0f}% of the "
               f"previous card count. The feed is probably incomplete; the existing "

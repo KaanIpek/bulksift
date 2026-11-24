@@ -1,0 +1,114 @@
+# The price feed, and the site it is served from.
+#
+# The app sorts cards by what they are worth, so a build whose prices never
+# change is wrong rather than limited. Measured 2026-11-24 against the snapshot
+# baked into the build from 24 August: 1,326 of 24,776 cards (5.4%) had moved to
+# a different pile at the default $1 / $10 lines, 521 of them from "keep" up to
+# "pull" - cards worth $10 or more that the app would have left in the box.
+#
+# This job is the whole server. Once a day it re-reads the public price feed,
+# writes prices.json and its manifest, and deploys them beside the privacy and
+# support pages on GitHub Pages:
+#
+#   https://kaanipek.github.io/bulksift/prices/prices-meta.json   ~40 bytes
+#   https://kaanipek.github.io/bulksift/prices/prices.json        ~2 MB, gzipped on the wire
+#
+# Pages is deployed from an artifact, not from a commit, so a daily 2 MB file
+# does not pile up in the repository's history.
+#
+# Two things it must never do, and how each is prevented:
+#   - publish a half-fetched feed: refresh_prices.py refuses one, and a set that
+#     failed keeps yesterday's prices, which this job downloads first.
+#   - take the privacy and support pages down with it: if the refresh fails,
+#     yesterday's book is deployed again with the pages, and the run is then
+#     marked failed so the failure is seen.
+#
+# GitHub turns scheduled workflows off after 60 days without a commit to the
+# repository. If prices stop moving, look at the Actions tab first.
+
+name: prices
+
+on:
+  schedule:
+    # After the feed's own daily rebuild (around 20:00 UTC), off the hour.
+    - cron: '37 21 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'data/price_map.json'
+      - 'tools/refresh_prices.py'
+      - 'tools/publish_prices.py'
+      - '.github/workflows/prices.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  LIVE: https://kaanipek.github.io/bulksift/prices
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The committed prices.json is whatever the last app build shipped with,
+      # which can be months old. Yesterday's published book is the right thing
+      # to compare today's against and to fall back on.
+      - name: Start from the book that is live
+        run: |
+          if curl -fsS --compressed --max-time 60 -o live.json "$LIVE/prices.json"; then
+            if python -c "import json,sys; b=json.load(open('live.json',encoding='utf-8')); sys.exit(0 if len(b.get('prices',{}))>=15000 and b.get('updated') else 1)"; then
+              mv live.json data/prices.json
+              echo "starting from the live book"
+            else
+              echo "the live book did not look whole; starting from the committed one"
+            fi
+          else
+            echo "nothing live yet; starting from the committed book"
+          fi
+
+      - name: Refresh prices
+        id: refresh
+        continue-on-error: true
+        run: python tools/refresh_prices.py
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          cp -r docs/. _site/
+          python tools/publish_prices.py _site/prices
+          ls -la _site _site/prices
+          cat _site/prices/prices-meta.json
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Report a refresh that failed
+        if: steps.refresh.outcome == 'failure'
+        run: |
+          echo "::error::The price refresh failed; the previous book was published again."
+          exit 1
