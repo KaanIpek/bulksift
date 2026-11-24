@@ -42,7 +42,12 @@ Dropping it is a one-word edit.
 - **Content rights declaration** - the question is whether the app shows
   third-party content and whether the owner has the right to. It shows card
   pictures. That answer is the owner's to give, so it was left blank.
-- **A build attached to the version.** Use one that contains the price feed.
+- **A build attached to the version.** It must be 139 or later. Build 138 has a
+  subscribe button with no price on it ("Go Pro"), which guideline 3.1.2
+  rejects; 139 shows each plan's price and period, the renewal sentence, and
+  Terms / Privacy links. `docs/review/paywall-web-preview.jpg` is a browser
+  render of that screen with sample prices - a stand-in for looking at, not the
+  review screenshot, which should come from the phone with the store's prices.
 - **The App Privacy questionnaire** below; it has no public API.
 
 ## Name, subtitle, promotional text, description, keywords

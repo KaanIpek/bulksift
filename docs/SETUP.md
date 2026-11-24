@@ -85,6 +85,18 @@ All five, priced, localised, and available in all 175 countries.
 
 Both subscriptions are in the group **BulkSift Pro**.
 
+The paywall lists whatever subscriptions the RevenueCat offering contains, each
+with the store's own price and period (`apps/mobile/src/plans.ts`); it accepts
+weekly, monthly and yearly and ignores any other length. Adding a plan to the
+offering is therefore all it takes to put it on sale - no build.
+
+**Which offer is live** - how many scans are free, and whether the paywall
+introduces itself on first launch - is named by `docs/offer.json`, served at
+`https://kaanipek.github.io/bulksift/offer.json`. It says `launch`. The other
+value the app understands is `tight`; see `apps/mobile/src/offer.ts` for what
+each gives and `docs/PAID_TEST.md` for why a second one exists. Editing that
+file changes what every install gets the next time it is opened.
+
 The prices came from what the competition actually charges. The two direct
 scanner apps - Card Value Scanner (20K ratings) and PokeScope (2.5K) - both sell
 a **weekly** subscription at $7.99 and an annual at $24.99. A weekly at that

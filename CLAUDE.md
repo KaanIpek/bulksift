@@ -15,7 +15,7 @@ Repo <https://github.com/KaanIpek/bulksift> (**public**, deliberately — see CI
 ```bash
 git clone https://github.com/KaanIpek/bulksift.git
 cd bulksift && npm install && npm --prefix apps/mobile install
-npm test          # expect: 23 passed, 0 failed
+npm test          # expect: 26 passed, 0 failed
 ```
 
 That is enough to build and ship the app. **`data/images/` (8.4 GB, 25,233 card
@@ -56,7 +56,7 @@ Convention: pure logic and I/O live in separate files so the logic can be tested
 in Node — `collection.ts`↔`collectionStore.ts`, `prices.ts`↔`pricesStore.ts`,
 `merge.ts`↔`sync.ts`.
 
-Tests: `npm test` runs 23 suites. Files named `_foo.ts` in `packages/core/test/`
+Tests: `npm test` runs 26 suites. Files named `_foo.ts` in `packages/core/test/`
 are **measurement harnesses**, not tests — they are how every constant below was
 chosen, and they are the tool to reach for before changing one.
 
@@ -246,6 +246,61 @@ question is not "will search find it" but "does a small paid test pay for
 itself", and that needs two decisions that are the owner's: an ad budget, and a
 tighter offer (fewer free scans, a weekly plan). Neither was changed.
 
+### 2026-11-24, later - the paywall could not have passed review, and the paid test was costed
+
+Asked to continue, I went to prepare the tighter offer and read the paywall as
+a reviewer would first. Three defects, none of them about the offer:
+
+**1. The subscribe button had no price.** One button, "Go Pro"; no amount, no
+period, no choice between the monthly and the yearly plan. `subscribe()` bought
+"whichever package is not a credit pack", which with two subscriptions on sale
+is whichever the store lists first. App Review rejects that under guideline
+3.1.2, and build 138 - attached to the 1.0 draft - had it. Now: `plans.ts`
+(pure, tested) turns what the store returns into rows with price and period, a
+button that names what it charges ("Subscribe for $29.99 / year"), the renewal
+sentence, and Terms / Privacy links. A free trial is mentioned only when the
+store says this customer can still have one. Nothing in the app contains a
+price.
+
+**2. The Pro list sold something free.** "Weekly price updates" - prices refresh
+daily for everyone. Removed.
+
+**3. A new day was only noticed at cold start.** `refill` ran in `load()` and
+nowhere else, and so did the once-a-day price check. iOS keeps a suspended app
+for days: run out on Monday, come back Tuesday without force-quitting, and the
+paywall still said "your free scans come back tomorrow". Both now run when the
+app returns to the front, and the allowance again at each scan. (This also
+means the build-138 test note's "the price date moves by itself" was only true
+after a force-quit.)
+
+**The tighter offer exists and is switched off.** `offer.ts` holds two offers:
+`launch` (30 a day, 5 videos, no paywall until the scans run out) and `tight`
+(10 a day, 3 videos, the paywall introduced once before the first scan, weekly
+plan preselected if one exists). `docs/offer.json` on the Pages site names the
+live one and says `launch`. It can only name an offer that shipped - it cannot
+supply numbers - and with no answer a phone keeps the offer it had. Switching
+is one word and a push; it is the owner's decision and nobody else's.
+`entitlement.ts` gained `CEILING` (what a saved file is trusted up to),
+`setLimits` and `retune`; credits are never touched by an offer.
+
+**The paywall can now be looked at without a phone.** In a development web
+build, `?demo=settings` (or `out-of-scans`, or `welcome&offer=tight&weekly=1`)
+opens it with sample plans. `docs/review/paywall-web-preview.jpg` is that
+render. A screenshot taken while the sheet is sliding in shows it a fifth of
+the way up - the preview pane's animation clock stalls when hidden - so measure
+the sheet's rectangle before believing a picture of it.
+
+**What a paid test would cost, before spending anything: `docs/PAID_TEST.md`.**
+At published medians a paid install loses money under either offer: about $177
+per paying customer on the launch offer against $25-51 of revenue, and about
+break-even after a year on the tight one if it converted like a hard paywall,
+which it is not. A $500 test buys ~109 installs and cannot measure the paying
+rate (3 payers is consistent with 1% to 8%); it can measure the cost of a
+started trial, and the line is **under about $14**. Running it needs the
+owner's decisions on budget, the live offer, a weekly product and its price,
+and whether the Meta SDK goes in (without it Meta optimises for clicks, not
+installs).
+
 ### Next, in the order I would do it
 
 1. **The remaining recognition gap — needs one real frame.** Holos and Special
@@ -271,8 +326,9 @@ tighter offer (fewer free scans, a weekly plan). Neither was changed.
 4. **Price hosting.** Done 2026-11-24, see above and `docs/SETUP.md`.
 5. **Store submission.** The text is in App Store Connect as a draft. Left, all
    needing the phone or the owner: six screenshots and one of the paywall, the
-   content rights answer, the App Privacy questionnaire, attaching a build, and
-   the owner's yes. The list is in `docs/STORE_LISTING.md`.
+   content rights answer, the App Privacy questionnaire, and the owner's yes.
+   The list is in `docs/STORE_LISTING.md`. Submit a build that has the priced
+   paywall (139 or later), never 138.
 6. **AdMob payment profile**, or the rewarded unit serves nothing.
 
 ---
