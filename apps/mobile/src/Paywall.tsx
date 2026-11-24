@@ -16,9 +16,13 @@
  * sandbox account.
  */
 
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { LIMITS, type Entitlement } from './entitlement';
+import {
+  ctaLabel, defaultPlan, planLine, planName, savingPercent, termsLine, type Period, type Plan,
+} from './plans';
 import type { Product } from './store';
 import { CheckIcon, CloseIcon, ScanIcon } from './ui/icons';
 import { Badge, Button } from './ui/parts';
@@ -26,7 +30,11 @@ import { c, r, s, shadow, t } from './ui/theme';
 
 /** Why the paywall opened, so it can lead with the relevant thing. */
 export type PaywallReason =
-  | 'out-of-scans' | 'collections' | 'export' | 'browse' | 'settings';
+  | 'out-of-scans' | 'collections' | 'export' | 'browse' | 'settings' | 'welcome';
+
+/** Where the two documents Apple requires beside a subscription live. */
+const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+const PRIVACY_URL = 'https://kaanipek.github.io/bulksift/privacy.html';
 
 const HEADLINE: Record<PaywallReason, { title: string; sub: string }> = {
   'out-of-scans': {
@@ -51,13 +59,23 @@ const HEADLINE: Record<PaywallReason, { title: string; sub: string }> = {
     title: 'BulkSift Pro',
     sub: 'Unlimited scanning, unlimited collections, and export.',
   },
+  // Shown once, before the first scan, and only on an offer that asks for it
+  // (see `offer.ts`). It says what the free plan gives before it says what Pro
+  // costs, and "Not now" is a real button rather than a faint cross.
+  welcome: {
+    title: 'Sort a whole box in one sitting',
+    sub: 'Every card is named, priced and called to its pile by sound. '
+      + 'Try it free, or go unlimited from the start.',
+  },
 };
 
 const PRO_POINTS = [
   'Unlimited scanning',
   'As many collections as you like',
   'CSV export, priced and ready to list',
-  'Weekly price updates',
+  // "Weekly price updates" stood here until 2026-11-24. Prices refresh daily
+  // for everyone, paying or not - a point that sold something free was a claim
+  // the app could not back, on the one screen where claims are about money.
 ];
 
 export default function Paywall({
@@ -67,6 +85,8 @@ export default function Paywall({
   onWatchAd,
   onBuyCredits,
   packs = [],
+  plans = [],
+  prefer = null,
   onSubscribe,
   onRestore,
   busy,
@@ -79,7 +99,8 @@ export default function Paywall({
   /** Offer a rewarded video. Resolves when the SDK says the reward was earned. */
   onWatchAd: () => void;
   onBuyCredits: (productId: string) => void;
-  onSubscribe: () => void;
+  /** Subscribe on the plan the buyer picked. Never called without one. */
+  onSubscribe: (planId: string) => void;
   onRestore: () => void;
   /** A purchase or an ad is in flight; every action is disabled meanwhile. */
   busy?: boolean;
@@ -94,10 +115,32 @@ export default function Paywall({
   adsReady?: boolean;
   /** Credit packs on sale, straight from the store. */
   packs?: Product[];
+  /**
+   * Subscription plans on sale, straight from the store, best value first.
+   * The price on the button is the one in here and nowhere else.
+   */
+  plans?: Plan[];
+  /** The plan length to select first, when it is on sale. */
+  prefer?: Period | null;
 }) {
+  /*
+   * Which plan is selected. Reset whenever the paywall opens or the list
+   * changes, so a choice made last week on a plan that has since left the
+   * store cannot be the one that gets bought.
+   */
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const planKey = plans.map((p) => p.id).join('|');
+  useEffect(() => {
+    setPickedId(defaultPlan(plans, prefer)?.id ?? null);
+    // `plans` is a fresh array each render; `planKey` is what it contains.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reason, planKey, prefer]);
+
   if (!reason) return null;
   const head = HEADLINE[reason];
   const adsLeft = Math.max(0, LIMITS.adsPerDay - entitlement.adsToday);
+  const picked = plans.find((p) => p.id === pickedId) ?? defaultPlan(plans, prefer);
+  const canBuy = storeReady && !!picked && !entitlement.pro;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -120,7 +163,7 @@ export default function Paywall({
             <View style={styles.stateRow}>
               <Text style={styles.stateLabel}>Free scans today</Text>
               <Text style={styles.stateValue}>
-                {entitlement.freeLeft} of {LIMITS.freePerDay}
+                {entitlement.freeLeft} of {Math.max(LIMITS.freePerDay, entitlement.freeLeft)}
               </Text>
             </View>
             <View style={styles.stateRow}>
@@ -207,26 +250,92 @@ export default function Paywall({
                 <Text style={styles.pointText}>{line}</Text>
               </View>
             ))}
+
+            {/*
+              The plans, each with its price and its length, before anything
+              can be bought. One is always selected and it is the one the
+              button names - so what is charged was on screen first.
+            */}
+            {canBuy && plans.length > 1 ? (
+              <View style={styles.plans}>
+                {plans.map((plan) => {
+                  const on = plan.id === picked?.id;
+                  const save = savingPercent(plan, plans);
+                  return (
+                    <Pressable
+                      key={plan.id}
+                      onPress={() => setPickedId(plan.id)}
+                      disabled={busy}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={`${planName(plan)}, ${planLine(plan)}`}
+                      style={[styles.plan, on && styles.planOn]}
+                    >
+                      <View style={[styles.radio, on && styles.radioOn]}>
+                        {on ? <View style={styles.radioDot} /> : null}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.planName}>{planName(plan)}</Text>
+                        {plan.trialDays ? (
+                          <Text style={styles.planTrial}>
+                            {plan.trialDays} day{plan.trialDays === 1 ? '' : 's'} free first
+                          </Text>
+                        ) : null}
+                      </View>
+                      {save ? <Badge label={`SAVE ${save}%`} tone="good" /> : null}
+                      <Text style={styles.planPrice}>{planLine(plan)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+
             <Button
               label={
                 entitlement.pro ? 'You have Pro'
-                  : storeReady ? 'Go Pro' : 'Not available yet'
+                  : canBuy && picked ? ctaLabel(picked) : 'Not available yet'
               }
               kind="primary"
-              onPress={onSubscribe}
-              disabled={busy || entitlement.pro || !storeReady}
+              onPress={() => { if (picked) onSubscribe(picked.id); }}
+              disabled={busy || !canBuy}
             />
-            {!storeReady && !entitlement.pro ? (
+            {canBuy && picked ? (
+              <Text style={styles.terms}>{termsLine(picked)}</Text>
+            ) : null}
+            {!canBuy && !entitlement.pro ? (
               <Text style={styles.pending}>
-                Purchases are not connected in this build. Everything you have
-                scanned is yours and stays on this phone either way.
+                {storeReady
+                  ? 'The store has not listed a plan yet. Try again in a moment.'
+                  : 'Purchases are not connected in this build.'}
+                {' '}Everything you have scanned is yours and stays on this phone
+                either way.
               </Text>
             ) : null}
           </View>
 
+          {reason === 'welcome' ? (
+            <Button
+              label={`Not now - ${entitlement.freeLeft} free scans today`}
+              kind="quiet"
+              onPress={onClose}
+              disabled={busy}
+            />
+          ) : null}
+
           <Pressable onPress={onRestore} disabled={busy} style={styles.restore}>
             <Text style={styles.restoreText}>Restore purchases</Text>
           </Pressable>
+
+          {/* Required beside a subscription, and reachable before buying one. */}
+          <View style={styles.legal}>
+            <Pressable onPress={() => void Linking.openURL(TERMS_URL)} hitSlop={8}>
+              <Text style={styles.legalText}>Terms of Use</Text>
+            </Pressable>
+            <Text style={styles.legalDot}>·</Text>
+            <Pressable onPress={() => void Linking.openURL(PRIVACY_URL)} hitSlop={8}>
+              <Text style={styles.legalText}>Privacy Policy</Text>
+            </Pressable>
+          </View>
 
           {/*
             Said once, plainly. Recognition and prices are on the device; the
@@ -293,6 +402,28 @@ const styles = StyleSheet.create({
   packLabel: { ...t.tiny, color: c.faint, marginTop: -2 },
   packPrice: { ...t.money, color: c.accent, marginTop: 5 },
   pending: { ...t.tiny, color: c.faint, textAlign: 'center', lineHeight: 15 },
+  plans: { gap: s.sm, marginTop: s.xs },
+  plan: {
+    flexDirection: 'row', alignItems: 'center', gap: s.sm,
+    paddingVertical: s.md, paddingHorizontal: s.md, borderRadius: r.md,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.line,
+  },
+  planOn: { borderColor: c.accent, backgroundColor: c.surfaceHi },
+  radio: {
+    width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: c.faint,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  radioOn: { borderColor: c.accent },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.accent },
+  planName: { ...t.subtitle, fontSize: 15, color: c.text },
+  planTrial: { ...t.tiny, color: c.good, marginTop: 1 },
+  planPrice: { ...t.money, color: c.text },
+  // Not `faint`: this is the sentence that says what is charged, and it has to
+  // be readable, not merely present.
+  terms: { ...t.tiny, fontWeight: '500', color: c.dim, textAlign: 'center', lineHeight: 16 },
+  legal: { flexDirection: 'row', justifyContent: 'center', gap: s.sm, paddingBottom: s.md },
+  legalText: { ...t.tiny, color: c.dim, textDecorationLine: 'underline' },
+  legalDot: { ...t.tiny, color: c.faint },
   restore: { paddingVertical: s.md, alignItems: 'center' },
   restoreText: { ...t.meta, color: c.dim },
   note: {

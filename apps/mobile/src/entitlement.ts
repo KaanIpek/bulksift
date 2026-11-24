@@ -77,6 +77,10 @@ export interface Limits {
  *   HoloDex     Pro gates unlimited scans, AI grading, the Performance tab
  *               and the Max chart range. Price is not published on the web.
  *
+ * (2026-11-24: that comparison was against apps people find by search. The
+ * scanners that have grown since buy their installs and wall them at once;
+ * against those this ration is the outlier. See `offer.ts`.)
+ *
  * So metering scans is normal here - two of the three do it - and $4.99/mo is
  * the anchor. 30 a day is roughly 900 a month, which is four and a half times
  * Ludex's Lite allowance and far above their free tier, while Collectr remains
@@ -92,11 +96,56 @@ export interface Limits {
  * way to live in the free tier forever, and it should top you up rather than
  * replace the reason to pay.
  */
-export const LIMITS: Limits = {
+export const CEILING: Limits = {
   freePerDay: 30,
   perAd: 10,
   adsPerDay: 5,
 };
+
+/**
+ * The limits in force right now.
+ *
+ * They start at the ceiling - the launch offer, and the most generous one any
+ * build has shipped - and `setLimits` may lower them when the app learns it is
+ * on a tighter offer (see `offer.ts`). One object, mutated in place, because
+ * every function below takes `limits = LIMITS` and every screen reads it: a
+ * second copy would be a second opinion about how many scans someone has.
+ */
+export const LIMITS: Limits = { ...CEILING };
+
+/**
+ * Put an offer's limits in force. Returns whether anything changed.
+ *
+ * Nothing may exceed the ceiling. `normalise` trusts a file up to the ceiling,
+ * so a limit above it would be a number the app grants and then refuses to
+ * read back.
+ */
+export function setLimits(next: Limits): boolean {
+  const fit = (v: number, cap: number) =>
+    Number.isFinite(v) && v >= 0 ? Math.min(Math.floor(v), cap) : cap;
+  const want: Limits = {
+    freePerDay: fit(next.freePerDay, CEILING.freePerDay),
+    perAd: fit(next.perAd, CEILING.perAd),
+    adsPerDay: fit(next.adsPerDay, CEILING.adsPerDay),
+  };
+  const changed = want.freePerDay !== LIMITS.freePerDay
+    || want.perAd !== LIMITS.perAd || want.adsPerDay !== LIMITS.adsPerDay;
+  Object.assign(LIMITS, want);
+  return changed;
+}
+
+/**
+ * Bring a record in line with limits that have just changed.
+ *
+ * Only the free ration is touched, and only downwards: credits were bought or
+ * earned and no offer may reach them. Lowering takes effect at once rather than
+ * at the next refill, because the day that matters for a tighter offer is the
+ * first one - an install that got thirty free scans on day one and ten from day
+ * two has not met the offer being tested.
+ */
+export function retune(e: Entitlement, limits: Limits = LIMITS): Entitlement {
+  return e.freeLeft > limits.freePerDay ? { ...e, freeLeft: limits.freePerDay } : e;
+}
 
 export function fresh(at: number): Entitlement {
   const day = dayKey(at);
@@ -261,10 +310,12 @@ export function normalise(raw: unknown, at: number): Entitlement {
     typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : fallback;
   return {
     pro: r.pro === true,
-    freeLeft: Math.min(num(r.freeLeft, base.freeLeft), LIMITS.freePerDay),
+    // Against the ceiling, not the limits in force: the file is read before the
+    // app knows which offer it is on, and `retune` brings it down afterwards.
+    freeLeft: Math.min(num(r.freeLeft, base.freeLeft), CEILING.freePerDay),
     freeDay: typeof r.freeDay === 'string' ? r.freeDay : base.freeDay,
     credits: num(r.credits, 0),
-    adsToday: Math.min(num(r.adsToday, 0), LIMITS.adsPerDay),
+    adsToday: Math.min(num(r.adsToday, 0), CEILING.adsPerDay),
     adsDay: typeof r.adsDay === 'string' ? r.adsDay : base.adsDay,
     scansEver: num(r.scansEver, 0),
     creditsEver: num(r.creditsEver, 0),

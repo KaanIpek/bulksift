@@ -28,6 +28,12 @@
 import { Platform } from 'react-native';
 
 import { purchasesSdk } from './native';
+import { orderPlans, periodOf, trialDaysOf, type Plan } from './plans';
+
+export type { Plan } from './plans';
+
+/** RevenueCat's INTRO_ELIGIBILITY_STATUS_ELIGIBLE. The enum lives in the native SDK. */
+const INTRO_ELIGIBLE = 2;
 
 /** How many scans each consumable pack grants. Keyed by product identifier. */
 export const CREDIT_PACKS: Record<string, number> = {
@@ -132,6 +138,49 @@ export async function products(): Promise<Product[]> {
 }
 
 /**
+ * The subscription plans on sale, with what each one costs and for how long.
+ *
+ * Everything in the offering that is not a credit pack and whose period can be
+ * read. The trial is reported only when the store says this customer may still
+ * take it; when that question cannot be answered the trial is left out, and the
+ * screen states the full price - someone who then gets a free week is surprised
+ * in the direction nobody complains about.
+ */
+export async function plans(): Promise<Plan[]> {
+  const p = sdk();
+  if (!p || !configured) return [];
+  try {
+    const offerings = await p.getOfferings();
+    const subs = (offerings.current?.availablePackages ?? [])
+      .filter((pkg) => !CREDIT_PACKS[pkg.product.identifier]);
+    let eligible: Record<string, { status: number }> = {};
+    try {
+      eligible = await p.checkTrialOrIntroductoryPriceEligibility(
+        subs.map((pkg) => pkg.product.identifier),
+      );
+    } catch { /* unknown is treated as not eligible, below */ }
+    const out: Plan[] = [];
+    for (const pkg of subs) {
+      const period = periodOf(pkg.product.subscriptionPeriod, String(pkg.packageType));
+      if (!period) continue;
+      out.push({
+        id: pkg.product.identifier,
+        price: pkg.product.priceString,
+        amount: pkg.product.price,
+        period,
+        trialDays: trialDaysOf(
+          pkg.product.introPrice,
+          eligible[pkg.product.identifier]?.status === INTRO_ELIGIBLE,
+        ),
+      });
+    }
+    return orderPlans(out);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Read a customer record into the two facts this app cares about.
  *
  * The credit count deliberately does NOT come from here. A pack is granted once,
@@ -163,16 +212,23 @@ export async function buy(productId: string): Promise<Purchase> {
   }
 }
 
-/** Subscribe to Pro. */
-export async function subscribe(): Promise<Purchase> {
+/**
+ * Subscribe to Pro, on the plan the buyer chose.
+ *
+ * The plan is named by the caller and has to be. This used to take no argument
+ * and buy "whichever package is not a credit pack" - with a monthly and a
+ * yearly both on sale, that was whichever the store listed first, at a price
+ * the screen had never shown.
+ */
+export async function subscribe(productId: string): Promise<Purchase> {
   const p = sdk();
   if (!p || !configured) return { ok: false, reason: NOT_CONNECTED };
+  if (!productId || CREDIT_PACKS[productId]) return { ok: false, reason: 'Unknown plan.' };
   try {
     const offerings = await p.getOfferings();
-    // The subscription is whichever package is not a credit pack.
     const pkg = offerings.current?.availablePackages
-      .find((x) => !CREDIT_PACKS[x.product.identifier]);
-    if (!pkg) return { ok: false, reason: 'Pro is not available right now.' };
+      .find((x) => x.product.identifier === productId);
+    if (!pkg) return { ok: false, reason: 'That plan is not available right now.' };
     const { customerInfo } = await p.purchasePackage(pkg);
     return { ok: true, pro: proFrom(customerInfo) };
   } catch (e) {

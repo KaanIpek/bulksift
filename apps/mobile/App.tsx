@@ -42,9 +42,45 @@ import { load, save } from './src/collectionStore';
 import { freshness, isStale, refreshDue, type PriceState } from './src/prices';
 import { cached, refresh as fetchPrices } from './src/pricesStore';
 import {
-  canScan, canWatchAd, fresh, grantAd, grantPack, refill, refund, scansLeft, setPro, spend,
-  type Entitlement,
+  canScan, canWatchAd, fresh, grantAd, grantPack, refill, refund, retune, scansLeft, setLimits,
+  setPro, spend, type Entitlement,
 } from './src/entitlement';
+import { DEFAULT_OFFER, OFFERS, pickOffer, shouldWelcome, type OfferId } from './src/offer';
+import { fetchOffer } from './src/offerStore';
+
+/*
+ * Looking at the paywall in a browser.
+ *
+ * The web target is how every screen gets looked at, and the store does not
+ * exist there - so the plan picker, the one part of the paywall that states a
+ * price, could not be seen anywhere but a phone with a sandbox account. In a
+ * development web build only:
+ *
+ *   ?demo=settings        open the paywall for that reason, with sample plans
+ *   ?demo=welcome&offer=tight&weekly=1
+ *
+ * The sample plans and packs have the store's shape. Their amounts are the US
+ * prices in docs/SETUP.md, typed here by hand - which is exactly what the real
+ * paywall never does - except the weekly one, which does not exist and is
+ * invented. Nothing can be bought: the purchase handlers below still refuse
+ * while the real store is not ready. `__DEV__` is false in every build that
+ * ships, so none of this runs on a phone.
+ */
+const DEMO = __DEV__ && Platform.OS === 'web' && typeof location !== 'undefined'
+  ? new URLSearchParams(location.search) : null;
+const DEMO_REASON = DEMO?.get('demo') ?? null;
+const DEMO_PLANS: Plan[] = DEMO_REASON ? [
+  { id: 'demo.yearly', price: '$29.99', amount: 29.99, period: 'year' },
+  { id: 'demo.monthly', price: '$4.99', amount: 4.99, period: 'month' },
+  ...(DEMO?.get('weekly')
+    ? [{ id: 'demo.weekly', price: '$3.99', amount: 3.99, period: 'week' as const, trialDays: 3 }]
+    : []),
+] : [];
+const DEMO_PACKS: Product[] = DEMO_REASON ? [
+  { id: 'com.rldgames.bulksift.credits.200', title: '200 scans', price: '$1.99', credits: 200 },
+  { id: 'com.rldgames.bulksift.credits.1000', title: '1,000 scans', price: '$5.99', credits: 1000 },
+  { id: 'com.rldgames.bulksift.credits.5000', title: '5,000 scans', price: '$14.99', credits: 5000 },
+] : [];
 import {
   active, add as addCollection, freshLibrary, moveCard, remove as removeCollection,
   rename as renameCollection, setActive, update as updateCollection,
@@ -63,8 +99,9 @@ import {
 import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
 import {
-  adsAvailable, buy, configure as configureStore, currentPro, products as storeProducts,
-  restore, showRewardedAd, storeState, subscribe, configureAds, type Product,
+  adsAvailable, buy, configure as configureStore, currentPro, plans as storePlans,
+  products as storeProducts, restore, showRewardedAd, storeState, subscribe, configureAds,
+  type Plan, type Product,
 } from './src/store';
 import { record, type Point } from './src/history';
 import { loadEngine, type LoadedEngine } from './src/engine';
@@ -151,7 +188,18 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   /** Packs on sale, and whether a purchase is in flight. */
   const [packs, setPacks] = useState<Product[]>([]);
+  /** Subscription plans on sale. The paywall shows these and buys one by id. */
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [buying, setBuying] = useState(false);
+  /*
+   * Which offer this install is on, and whether its introductory paywall has
+   * been shown. Both are saved: the offer so a phone with no signal stays on
+   * the one it was last told, the flag so "once" survives a restart.
+   */
+  const [offerId, setOfferId] = useState<OfferId>(DEFAULT_OFFER);
+  const [welcomed, setWelcomed] = useState(false);
+  /** Counts returns to the foreground, so once-a-day checks can run on one. */
+  const [resumes, setResumes] = useState(0);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [setFilter, setSetFilter] = useState<string | null>(null);
 
@@ -252,6 +300,8 @@ export default function App() {
       if (!cancelled && pro != null) setEnt((e) => setPro(e, pro));
       const list = await storeProducts();
       if (!cancelled) setPacks(list.filter((x) => x.credits));
+      const subs = await storePlans();
+      if (!cancelled) setPlans(subs);
     });
     return () => { cancelled = true; };
   }, []);
@@ -271,9 +321,15 @@ export default function App() {
         setLibrary(data.library);
         setBases(data.bases);
         setSortRule(data.sort ?? DEFAULT_RULE);
+        // The offer this phone was last told it is on comes first, because
+        // the refill below hands out that offer's ration.
+        const stored = pickOffer(null, data.offer);
+        setLimits(OFFERS[stored].limits);
+        setOfferId(stored);
+        setWelcomed(data.welcomed === true);
         // Refill on open, not on a timer: an app that was closed overnight has
         // to notice the new day the moment it is looked at.
-        setEnt(refill(data.entitlement, Date.now()));
+        setEnt(retune(refill(data.entitlement, Date.now())));
         setLoaded(true);
       })
       .catch(() => { if (!cancelled) setLoaded(true); });
@@ -291,10 +347,95 @@ export default function App() {
   useEffect(() => {
     if (!loaded) return;
     const id = setTimeout(() => {
-      void save({ library, entitlement: ent, bases, sort: sortRule });
+      void save({
+        library, entitlement: ent, bases, sort: sortRule, offer: offerId, welcomed,
+      });
     }, 700);
     return () => clearTimeout(id);
-  }, [library, ent, bases, sortRule, loaded]);
+  }, [library, ent, bases, sortRule, loaded, offerId, welcomed]);
+
+  /*
+   * Ask which offer is live.
+   *
+   * On open and each time the app comes back to the front. No answer changes
+   * nothing: an install keeps the offer it has rather than falling back to a
+   * default every time it loses signal.
+   */
+  useEffect(() => {
+    if (!loaded) return;
+    let cancelled = false;
+    const ask = () => {
+      void fetchOffer().then((remote) => {
+        if (cancelled || !remote) return;
+        setOfferId(remote);
+      });
+    };
+    const forced = DEMO?.get('offer');
+    if (forced) setOfferId(pickOffer(forced, null));
+    else ask();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && !forced) ask();
+    });
+    return () => { cancelled = true; sub.remove(); };
+  }, [loaded]);
+
+  /* A changed offer changes the ration; the record follows it here. */
+  useEffect(() => {
+    if (!loaded) return;
+    setLimits(OFFERS[offerId].limits);
+    setEnt((e) => retune(e));
+  }, [offerId, loaded]);
+
+  /*
+   * A new day while the app was open.
+   *
+   * The allowance used to refill only in `load`, which runs once per process.
+   * iOS keeps a suspended app alive for days, so someone who ran out on Monday
+   * and came back on Tuesday without force-quitting was still "out of scans
+   * for today" - and the paywall told them the scans would be back tomorrow.
+   * The price check had the same shape: due once a day, asked only at launch.
+   */
+  useEffect(() => {
+    if (!loaded) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      setEnt((e) => refill(e, Date.now()));
+      setResumes((n) => n + 1);
+    });
+    return () => sub.remove();
+  }, [loaded]);
+
+  /*
+   * Ask the store again when the paywall opens with nothing to sell.
+   *
+   * The lists above are read once, at launch. A phone that was offline then -
+   * the basement, the card show - would otherwise show a paywall with no plans
+   * for as long as the app stayed in memory, even after the signal came back.
+   */
+  useEffect(() => {
+    if (!paywall || plans.length) return;
+    let cancelled = false;
+    void storePlans().then((subs) => { if (!cancelled && subs.length) setPlans(subs); });
+    void storeProducts().then((list) => {
+      const found = list.filter((x) => x.credits);
+      if (!cancelled && found.length) setPacks(found);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paywall]);
+
+  useEffect(() => {
+    if (!loaded || !DEMO_REASON || DEMO_REASON === 'welcome') return;
+    setPaywall(DEMO_REASON as PaywallReason);
+  }, [loaded]);
+
+  /* The introductory paywall: once, before the first scan, if the offer asks. */
+  useEffect(() => {
+    if (!loaded || paywall) return;
+    if (!shouldWelcome(OFFERS[offerId], ent, welcomed)) return;
+    setWelcomed(true);
+    setPaywall('welcome');
+  }, [loaded, offerId, ent, welcomed, paywall]);
 
   /*
    * Record today's total whenever it moves.
@@ -396,11 +537,13 @@ export default function App() {
      * recognise a card, show it, and then not record it - which reads as a bug
      * rather than a limit.
      */
-    if (canScan(ent) !== 'none') {
+    // Refilled first: a session that runs past midnight is on a new day, and
+    // `refill` returns the same object when it is not, so this costs nothing.
+    if (canScan(refill(ent, Date.now())) !== 'none') {
       setPaywall('out-of-scans');
       return '';
     }
-    setEnt((e) => spend(e));
+    setEnt((e) => spend(refill(e, Date.now())));
     const variants = engine?.scanner.pricesFor(hit.card.i) ?? [];
     const pick = defaultVariant(variants);
     setEntries((prev) =>
@@ -580,8 +723,10 @@ export default function App() {
     if (refreshDue(priceState, Date.now())) void refreshPrices(false);
     // Deliberately not depending on `refreshPrices`: it changes identity while
     // a refresh is in flight, and re-running this then would start a second.
+    // `resumes` is here so the check also runs when the app comes back to the
+    // front on a later day; `refreshDue` still makes it once per calendar day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine, loaded, priceState.checkedAt]);
+  }, [engine, loaded, priceState.checkedAt, resumes]);
 
   /** Other printings of the same illustration, for the sheet to offer. */
   const openEntry = useCallback((entry: Entry) => {
@@ -831,7 +976,7 @@ export default function App() {
         reason={paywall}
         entitlement={ent}
         onClose={() => setPaywall(null)}
-        storeReady={storeState() === 'ready'}
+        storeReady={DEMO_PLANS.length > 0 || storeState() === 'ready'}
         adsReady={adsAvailable()}
         onWatchAd={() => {
           if (!adsAvailable() || buying) return;
@@ -842,7 +987,9 @@ export default function App() {
             .then((earned) => { if (earned) setEnt(grantAd); })
             .finally(() => setBuying(false));
         }}
-        packs={packs}
+        packs={DEMO_PACKS.length ? DEMO_PACKS : packs}
+        plans={DEMO_PLANS.length ? DEMO_PLANS : plans}
+        prefer={OFFERS[offerId].prefer}
         busy={buying}
         onBuyCredits={(productId) => {
           if (storeState() !== 'ready' || buying) return;
@@ -854,10 +1001,10 @@ export default function App() {
             })
             .finally(() => setBuying(false));
         }}
-        onSubscribe={() => {
+        onSubscribe={(planId) => {
           if (storeState() !== 'ready' || buying) return;
           setBuying(true);
-          void subscribe()
+          void subscribe(planId)
             .then((r) => { if (r.ok && r.pro) setEnt((e) => setPro(e, true)); })
             .finally(() => setBuying(false));
         }}

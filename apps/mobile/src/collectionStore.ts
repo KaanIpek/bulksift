@@ -43,6 +43,13 @@ export interface Saved {
    * stays valid; a file without it reads as "sorting off".
    */
   sort?: SortRule;
+  /**
+   * The offer this phone was last told it is on (`offer.ts`), and whether that
+   * offer's introductory paywall has been shown. Both optional for the same
+   * reason as `sort`; a file without them is on the launch offer.
+   */
+  offer?: string;
+  welcomed?: boolean;
 }
 
 /**
@@ -75,6 +82,8 @@ function parse(raw: string | null, at: number): Saved {
       entitlement: normalise(parsed.entitlement, at),
       bases: readBases(parsed.bases),
       sort: normaliseRule(parsed.sort),
+      offer: typeof parsed.offer === 'string' ? parsed.offer : undefined,
+      welcomed: parsed.welcomed === true,
     };
   } catch {
     return { library: loadLibrary(null, at), entitlement: normalise(null, at), bases: {} };
