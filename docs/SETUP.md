@@ -136,18 +136,21 @@ to App Store Connect with an in-app purchase key. The public SDK key is in
 - Offering **`default`** exists, because the app reads `offerings.current` and
   will find nothing without one.
 
-**Two packages still to add**, and the paywall shows only what is in the
-offering, so the $5.99 and $14.99 packs are invisible until they are:
+**All five packages are in the offering**, read back on 2026-11-24 from the
+same endpoint the app uses: `credits5000`, `credits1000`, `credits200`,
+`$rc_annual`, `$rc_monthly`, in that order. (This section used to list the two
+larger packs as still to add; they had been added and the note not updated.)
 
-1. Product catalog > Offerings > `default` > Edit > **New Package**
-2. Identifier: **Custom** > `credits1000`, description `1000 scan credits`,
-   product `com.rldgames.bulksift.credits.1000`
-3. Repeat for `credits5000` / `5000 scan credits` /
-   `com.rldgames.bulksift.credits.5000`
-4. Save
+To check it again without a phone - the key is the public one in `store.ts`:
 
-The first three packages - `credits200`, `$rc_monthly`, `$rc_annual` - are
-already there and were saved successfully.
+```bash
+curl -s -H "Authorization: Bearer <REVENUECAT_IOS_KEY>" -H "X-Platform: ios" \
+  https://api.revenuecat.com/v1/subscribers/probe/offerings
+```
+
+The yearly plan is listed before the monthly one. Until build 139 the app
+bought "the first package that is not a credit pack", so its unpriced "Go Pro"
+button was a $29.99 purchase.
 
 ## Done: the price feed
 
