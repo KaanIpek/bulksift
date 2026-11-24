@@ -136,7 +136,7 @@ Each of these cost real time. They are in the code comments too, but start here.
 ## Where it stands
 
 **Working and shipped to TestFlight:** recognition with the glare vote and the
-crop search, 25,234 cards across 191 sets, multi-collection, manual search, want
+crop search, 25,655 cards across 194 sets, multi-collection, manual search, want
 list, value history, CSV export, Apple + email sign-in, two-device sync with a
 three-way merge, rewarded ads, RevenueCat purchases, App Tracking Transparency,
 account deletion, a full-screen camera with a translucent dock, and a synthesised
@@ -186,6 +186,63 @@ TCGplayer/eBay CSV and a one-time "7 days unlimited" pass were the research's su
 the kill rule the research proposed — **90 days after launch, under ~$1K MRR or 50 paying
 sellers, stop.**
 
+### 2026-11-24 - the plan was questioned, and three things it had missed were fixed
+
+The owner asked for the 16 November plan to be attacked rather than continued.
+Applying to this app the same App Store measurement that had just killed another
+idea, and reading the repository as a stranger would, turned up three defects
+that mattered more than the store text the plan said was next.
+
+**1. The prices were three months old and could never change.** `PRICE_HOST` was
+`null`, so every build priced cards with the snapshot it shipped with (24 August).
+Against today's feed, 1,326 of 24,776 cards (5.4%) fall in a different pile at
+the default lines - 521 of them from keep up to pull. Fixed: a daily job
+(`.github/workflows/prices.yml`) publishes the book on GitHub Pages and
+`PRICE_HOST` points at it. Details and the ways to break it: `docs/SETUP.md`.
+
+**2. The catalogue did not contain the two newest sets** - the ones people are
+opening, and so the bulk they are sorting. Rebuilt: 25,655 cards across 194
+sets, 421 more than before. The image CDN this pipeline was built on
+(`images.pokemontcg.io`) no longer receives new sets at all: every card from
+July 2026 onward 404s there and comes from `fallback_images.py` (the TCGplayer
+product shot) instead. That path is now the main road for anything new, not a
+fallback.
+
+**3. A throttled rebuild wrote a catalogue with sets missing, and said so only
+in a log line.** The price feed answers 401 when it has had enough, and
+`build_catalogue.py` printed "FAILED" for each refused set and carried on - Base
+Set, Jungle and Fossil were among the twenty-odd it dropped. It now backs off
+properly, falls back to the cached copy of a set's product list, and refuses to
+write anything if a set has neither. Run the data pipeline when the feed has not
+been hit for a while; three price runs and a rebuild in one hour is too many.
+
+Two smaller things the rebuild tripped over, both fixed: `fallback_images.py`
+took its list of missing cards from a file the *next* step writes, so the first
+pass after adding sets fetched nothing for them (it reads the disk now, one pass
+is enough); and the fixture exporters still expected the old `cards.json` shape.
+The calibrate suite counted an exact row as "correct" and failed on the new
+sample with no card misread - three of its 25 frames were same-art twins - so it
+now uses the rule the sequence suite uses: right card, any printing. 11 promo
+cards whose TCGplayer product no longer exists dropped out of the catalogue.
+
+**The store listing is drafted in App Store Connect** (name "BulkSift: TCG Card
+Scanner", subtitle "Sort bulk by price, hands-free", description, keywords,
+review notes, categories, age rating, URLs). Nothing is submitted. Why it leads
+with "scanner" again, and what still blocks a submission: `docs/STORE_LISTING.md`.
+
+**What the research said about getting customers, which changes the plan more
+than any of the above.** Rating counts in this category are not revenue and
+search is not the channel. Every scanner released since 2025 whose growth could
+be traced buys its installs with Meta ads and meets them with a paywall in
+onboarding and a weekly plan (HoloDex ~590 ads, FoilSnap ~120, Acorn ~64; Acorn
+is one person and reports over $50K a month at 2.6x return on ad spend,
+unaudited). Of ~36 scanners released since 2025, ~22 have under 110 ratings.
+This app's offer - 30 free scans a day, $4.99 a month - is far more generous
+than any of them and cannot pay for an install. So after the store launch the
+question is not "will search find it" but "does a small paid test pay for
+itself", and that needs two decisions that are the owner's: an ad budget, and a
+tighter offer (fewer free scans, a weekly plan). Neither was changed.
+
 ### Next, in the order I would do it
 
 1. **The remaining recognition gap — needs one real frame.** Holos and Special
@@ -208,15 +265,11 @@ sellers, stop.**
 3. **Japanese cards cannot be read at all** — the catalogue is English-only, 191
    sets, exactly one card with a Japanese character in its name. Adding them is a
    separate catalogue and US prices do not apply. A product decision, not a bug.
-4. **Price hosting.** `PRICE_HOST` in `pricesStore.ts` is still `null`, so
-   "Refresh prices now" has nothing to fetch and the app uses the snapshot baked
-   into the build. Cloudflare R2, public bucket, `prices.json` +
-   `prices-meta.json` side by side. `npm run prices` writes both.
-5. **Store submission.** Six screenshots, on the phone — the web build differs in
-   fonts, safe areas and camera preview, and Apple wants the app in use. Which
-   six: `docs/STORE_LISTING.md`, which also has the description, keywords,
-   privacy answers and review notes ready to paste. Then the **Paid Applications
-   agreement** under Business, without which nothing can be sold.
+4. **Price hosting.** Done 2026-11-24, see above and `docs/SETUP.md`.
+5. **Store submission.** The text is in App Store Connect as a draft. Left, all
+   needing the phone or the owner: six screenshots and one of the paywall, the
+   content rights answer, the App Privacy questionnaire, attaching a build, and
+   the owner's yes. The list is in `docs/STORE_LISTING.md`.
 6. **AdMob payment profile**, or the rewarded unit serves nothing.
 
 ---

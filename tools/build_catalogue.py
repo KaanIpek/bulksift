@@ -30,7 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 CACHE = os.path.join(DATA, "cache")
 os.makedirs(CACHE, exist_ok=True)
-UA = {"User-Agent": "Mozilla/5.0 (BulkSift build)"}
+UA = {"User-Agent": "Mozilla/5.0"}
 
 CATALOGUE_ZIP = "https://github.com/PokemonTCG/pokemon-tcg-data/archive/refs/heads/master.zip"
 TCGCSV = "https://tcgcsv.com/tcgplayer"
@@ -45,19 +45,36 @@ def fetch(url, tries=5, timeout=120):
                 urllib.request.Request(url, headers=UA), timeout=timeout).read()
         except Exception as e:
             last = e
-            time.sleep(1.5 * (i + 1))
+            # tcgcsv throttles by answering 401, and a short wait does not
+            # outlast it: on 2026-11-24 a rebuild after several price runs lost
+            # 20-odd sets this way, Base Set among them.
+            time.sleep(3.0 * (2 ** i))
     raise RuntimeError(f"failed {url}: {last}")
 
 
+# Groups served from an out-of-date cache file because the feed refused them.
+STALE = []
+
+
 def fetch_json(url, cache_name=None, max_age=6 * 3600):
-    if cache_name:
-        p = os.path.join(CACHE, cache_name)
-        if os.path.exists(p) and time.time() - os.path.getmtime(p) < max_age:
+    p = os.path.join(CACHE, cache_name) if cache_name else None
+    if p and os.path.exists(p) and time.time() - os.path.getmtime(p) < max_age:
+        with open(p, "rb") as f:
+            return json.loads(f.read())
+    try:
+        blob = fetch(url)
+    except Exception:
+        # An old copy of a set's product list is nearly always still right;
+        # no copy at all removes the set from the app. Use the old one and say
+        # so. With nothing cached the error stands, and the caller stops.
+        if p and os.path.exists(p):
+            STALE.append(cache_name)
             with open(p, "rb") as f:
                 return json.loads(f.read())
-    blob = fetch(url)
-    if cache_name:
-        with open(os.path.join(CACHE, cache_name), "wb") as f:
+        raise
+    time.sleep(0.4)
+    if p:
+        with open(p, "wb") as f:
             f.write(blob)
     return json.loads(blob)
 
@@ -124,8 +141,14 @@ def load_tcgplayer():
             pr = fetch_json(f"{TCGCSV}/{POKEMON_CATEGORY}/{gid}/prices",
                             f"price_{gid}.json", max_age=6 * 3600)["results"]
         except Exception as e:
-            print(f"    group {gid} {g['name']}: FAILED {e}")
-            continue
+            # This used to print and carry on, and the catalogue it then wrote
+            # was simply missing the set: every card in it unknown to the app,
+            # with one line in a log to show for it. A catalogue is all the
+            # sets or it is not written.
+            raise SystemExit(
+                f"group {gid} {g['name']}: {e}\n"
+                f"Nothing was written. The feed is probably throttling; "
+                f"wait and run it again - what was fetched is cached.")
         for p in prod:
             ed = {e["name"]: e["value"] for e in p.get("extendedData", [])}
             p["_number"] = norm_number(ed.get("Number"))
@@ -142,6 +165,10 @@ def load_tcgplayer():
                 }
         if (n + 1) % 40 == 0:
             print(f"    {n+1}/{len(groups)} groups")
+    if STALE:
+        print(f"  {len(STALE)} files came from an out-of-date cache because the "
+              f"feed refused them: {', '.join(STALE[:8])}"
+              f"{' ...' if len(STALE) > 8 else ''}")
     return groups, products, prices
 
 

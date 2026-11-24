@@ -107,7 +107,23 @@ function calibrated(err: number, frameCount: number) {
     }
     bias = bestBias;
     finalDistances.push(best.best.distance);
-    if (best.best.index === meta.frames[i].row) correct++;
+    // "Correct" is the right card, not the right printing - the same rule
+    // `sequence.test.ts` uses. Which printing of a shared artwork wins is the
+    // reprint suite's subject, and calibration has no say in it: the two rows
+    // hold the same picture. Counting exact rows made this suite depend on how
+    // many twins the fixture sample happened to draw. With the 2026-11-24
+    // sample three of the first 25 are twins (Kadabra in Base and Shadowless,
+    // Snubbull, Iono) and it failed at 22/25 with not one card misread.
+    const want = meta.frames[i].row;
+    const got = best.best.index;
+    if (got === want || (cards[got] && cards[want] && cards[got].n === cards[want].n)) {
+      correct++;
+    } else {
+      console.log(
+        `    misread at ${err * 100}%: ${cards[want]?.n} (${cards[want]?.S}) ` +
+        `taken for ${cards[got]?.n} (${cards[got]?.S}), d=${best.best.distance}`,
+      );
+    }
   }
 
   const med = finalDistances.length

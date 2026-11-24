@@ -35,6 +35,12 @@ def main():
     cat = {c["id"]: c for c in json.load(open(os.path.join(DATA, "catalogue.json"),
                                              encoding="utf-8"))}
     cards = json.load(open(os.path.join(DATA, "cards.json"), encoding="utf-8"))
+    # cards.json went compact ({sets, cards: [[id, name, number, rarity, set
+    # index, product id], ...]}) and this script was not told; it then failed
+    # on the first rebuild that needed new fixtures (2026-11-24).
+    if isinstance(cards, dict):
+        sets = cards["sets"]
+        cards = [{"i": r[0], "n": r[1], "S": sets[r[4]][1]} for r in cards["cards"]]
     row_of = {c["i"]: n for n, c in enumerate(cards)}
 
     # group by (name, artist) across sets - the reprint signature

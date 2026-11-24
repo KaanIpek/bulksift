@@ -22,7 +22,7 @@ DATA = os.path.join(ROOT, "data")
 IMG = os.path.join(DATA, "images")
 DEAD = os.path.join(DATA, "dead_urls.json")
 os.makedirs(IMG, exist_ok=True)
-UA = {"User-Agent": "Mozilla/5.0 (BulkSift build)"}
+UA = {"User-Agent": "Mozilla/5.0"}
 
 WORKERS = 8
 TIMEOUT = 20

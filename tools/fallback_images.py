@@ -29,7 +29,7 @@ from descriptor import CANON_H, CANON_W, descriptor_bits  # noqa: E402
 
 DATA = os.path.join(ROOT, "data")
 IMG = os.path.join(DATA, "images")
-UA = {"User-Agent": "Mozilla/5.0 (BulkSift build)"}
+UA = {"User-Agent": "Mozilla/5.0"}
 CDN = "https://tcgplayer-cdn.tcgplayer.com/product/{pid}_in_1000x1000.jpg"
 
 
@@ -124,11 +124,17 @@ def validate(cat, n=40):
 def main():
     cat = json.load(open(os.path.join(DATA, "catalogue.json"), encoding="utf-8"))
     by_id = {c["id"]: c for c in cat}
-    missing_path = os.path.join(DATA, "missing_images.json")
-    if not os.path.exists(missing_path):
-        print("no missing_images.json - run tools/build_index.py first")
-        return 1
-    missing = json.load(open(missing_path))
+    # What is missing is read from the disk, not from missing_images.json.
+    # That file is written by build_index, which runs AFTER this step, so it
+    # described the previous build: on 2026-11-24 a rebuild that added two new
+    # sets fetched nothing for them, because the list still held August's 358
+    # cards. Every card from July 2026 onward has no art on the primary CDN and
+    # reaches the index only through here, so this step cannot be a pass late.
+    def on_disk(c):
+        path = os.path.join(IMG, safe_name(c["id"]))
+        return os.path.exists(path) and os.path.getsize(path) > 2000
+
+    missing = [c["id"] for c in cat if not on_disk(c)]
     targets = [by_id[m] for m in missing
                if by_id.get(m) and by_id[m].get("tcgplayerProductId")]
     print(f"{len(missing)} cards without art, {len(targets)} have a TCGplayer product\n")

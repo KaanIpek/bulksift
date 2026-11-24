@@ -63,6 +63,18 @@ def main():
         os.replace(tmp, PRICE_MAP)
         print(f"{len(cat)} cards, {len(by_product)} distinct TCGplayer products "
               f"(price_map.json rewritten)")
+        # After a catalogue rebuild the prices are already fresh (build_index
+        # wrote them) and only the map is behind. This brings it level without
+        # asking the feed for 222 more files it may refuse.
+        if "--map-only" in sys.argv:
+            book = json.load(open(os.path.join(DATA, "prices.json"), encoding="utf-8"))
+            meta_tmp = os.path.join(DATA, "prices-meta.json.tmp")
+            with open(meta_tmp, "w", encoding="utf-8") as f:
+                json.dump({"updated": book["updated"], "cards": len(book["prices"])},
+                          f, separators=(",", ":"))
+            os.replace(meta_tmp, os.path.join(DATA, "prices-meta.json"))
+            print(f"map only; manifest set to {book['updated']}, {len(book['prices'])} cards")
+            return 0
     elif os.path.exists(PRICE_MAP):
         raw = json.load(open(PRICE_MAP, encoding="utf-8"))
         by_product = {int(k): v for k, v in raw.items()}

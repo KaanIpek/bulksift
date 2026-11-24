@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 IMG = os.path.join(DATA, "images")
 os.makedirs(IMG, exist_ok=True)
-UA = {"User-Agent": "Mozilla/5.0 (BulkSift build)"}
+UA = {"User-Agent": "Mozilla/5.0"}
 
 MAGIC = b"PKSC"
 # Version 2 appends a second block of footer descriptors after the main rows.

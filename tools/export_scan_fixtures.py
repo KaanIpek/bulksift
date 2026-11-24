@@ -80,6 +80,12 @@ def make_frame(card, rng):
 
 def main():
     cards = json.load(open(os.path.join(DATA, "cards.json"), encoding="utf-8"))
+    # cards.json went compact ({sets, cards: [[id, name, number, rarity, set
+    # index, product id], ...]}) and this script was not told; it then failed
+    # on the first rebuild that needed new fixtures (2026-11-24).
+    if isinstance(cards, dict):
+        sets = cards["sets"]
+        cards = [{"i": r[0], "n": r[1], "S": sets[r[4]][1]} for r in cards["cards"]]
     row_of = {c["i"]: n for n, c in enumerate(cards)}
     available = [c for c in cards if os.path.exists(os.path.join(IMG, c["i"] + ".png"))]
     print(f"{len(available)} indexed cards have a local image")
