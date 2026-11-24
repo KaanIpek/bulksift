@@ -227,7 +227,10 @@ cards whose TCGplayer product no longer exists dropped out of the catalogue.
 
 **The store listing is drafted in App Store Connect** (name "BulkSift: TCG Card
 Scanner", subtitle "Sort bulk by price, hands-free", description, keywords,
-review notes, categories, age rating, URLs). Nothing is submitted. Why it leads
+review notes, categories, age rating, URLs). Nothing is submitted.
+**Build 138** carries all of the above; it is on TestFlight for the internal group
+and attached to the 1.0 draft. Not yet on a phone: the paywall fix, the sort
+sounds, the price refresh and the new sets are all unproven on a device. Why it leads
 with "scanner" again, and what still blocks a submission: `docs/STORE_LISTING.md`.
 
 **What the research said about getting customers, which changes the plan more
