@@ -22,7 +22,7 @@ pass through an agent's context.
 | **Supabase** | Done | `auth.ts` |
 | **App Store Connect products** | Done | ids match `store.ts` |
 | **RevenueCat** | Connected; 2 of 5 packages left to add | `store.ts` |
-| **Price hosting** | Not started | `pricesStore.ts` (still null) |
+| **Price hosting** | Done 2026-11-24, GitHub Pages, rebuilt daily | `pricesStore.ts`, `.github/workflows/prices.yml` |
 | **Privacy / support pages** | Live on GitHub Pages | linked from Settings |
 
 ---
@@ -130,33 +130,37 @@ offering, so the $5.99 and $14.99 packs are invisible until they are:
 The first three packages - `credits200`, `$rc_monthly`, `$rc_annual` - are
 already there and were saved successfully.
 
-## Left: somewhere to host `prices.json`
+## Done: the price feed
 
-**Why:** so "Refresh prices now" has something to fetch. Until then the app uses
-the snapshot baked into the build, which is correct but frozen.
+`.github/workflows/prices.yml` runs once a day (21:37 UTC), re-reads the public
+price feed and deploys two files beside the privacy and support pages:
 
-The file is 1.73 MB, and **0.26 MB gzipped**. At 10,000 users refreshing daily
-that is about 79 GB a month.
+- <https://kaanipek.github.io/bulksift/prices/prices-meta.json> - ~40 bytes,
+  the date and the card count. The app reads this first.
+- <https://kaanipek.github.io/bulksift/prices/prices.json> - the whole book,
+  2.0 MB, **0.34 MB on the wire** (Pages gzips it).
 
-**Cloudflare R2** is the recommendation - zero egress fees, so the whole thing
-costs cents for storage and nothing for traffic. A plain bucket with public read
-is enough; there is no API, just a file. The Cloudflare account is not signed in
-on this machine.
+`PRICE_HOST` in `pricesStore.ts` points there. Cloudflare R2 was the earlier
+recommendation and is still the place to move to if traffic ever matters (Pages
+has a soft 100 GB/month limit; at 0.34 MB a refresh that is roughly 10,000
+people pulling a new book every day). Moving is one constant and one upload
+step.
 
-```ts
-// apps/mobile/src/pricesStore.ts
-export const PRICE_HOST: string | null = 'https://prices.bulksift.app';
-```
+Things that are easy to break:
 
-Two files go in the bucket, side by side:
-
-- `prices.json` - the whole book.
-- `prices-meta.json` - a few bytes carrying the same `updated` date.
-
-The app fetches the manifest first and only pulls the book when that date has
-moved, so a refresh that finds nothing new transfers almost nothing. Uploading
-`prices.json` without updating the manifest means no device ever notices it -
-which is why `npm run prices` now writes both.
+- **Pages is deployed by that workflow now**, not from the `docs/` folder on
+  push (`build_type: workflow`). A change under `docs/` goes live when the
+  workflow runs, which a push touching `docs/**` triggers. If the workflow is
+  deleted, the privacy and support URLs stop updating.
+- **The job needs `data/price_map.json`** (card -> TCGplayer product, 0.5 MB,
+  committed) because the 18 MB `catalogue.json` is not in the repository.
+  `tools/refresh_prices.py` rewrites the map on every local run, so rebuild the
+  catalogue, run `npm run prices`, and commit the map with it.
+- **The feed throttles with 401**, not 429. Two runs back to back at 8 workers
+  lost 2,520 cards; the script now uses 3 workers, doubles its wait, and keeps
+  yesterday's price for a set it could not fetch.
+- **GitHub switches scheduled workflows off after 60 days without a commit.**
+  If the date in Settings > Prices stops moving, look at the Actions tab.
 
 ## Done: the privacy and support pages
 
