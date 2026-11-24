@@ -310,6 +310,12 @@ A product in that state is not returned by the store, so the paywall on every
 build so far would have had nothing to list - which the next build will show
 as "The store has not listed a plan yet" if it is ever true again.
 
+**Build 139** carries all of this. It is on TestFlight for the internal group
+with a test note, and it replaced 138 on the 1.0 draft. Nothing is submitted.
+Not yet seen on a phone: the plan rows with the store's real prices, a sandbox
+purchase of each plan, the allowance coming back the next day without a
+force-quit, and everything build 138 had not proven either.
+
 ### Next, in the order I would do it
 
 1. **The remaining recognition gap — needs one real frame.** Holos and Special
