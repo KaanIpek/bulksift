@@ -54,13 +54,16 @@ concurrency:
 env:
   LIVE: https://kaanipek.github.io/bulksift/prices
 
+# Two jobs, not one. With the upload and the deploy as consecutive steps the
+# deploy asked for the artifact 0.3 s after it was uploaded and was told there
+# were none ("Found 0 artifact(s)", second run on 2026-11-24; the first run had
+# been lucky). A job boundary is the wait.
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    outputs:
+      refresh: ${{ steps.refresh.outcome }}
     steps:
       - uses: actions/checkout@v4
 
@@ -103,12 +106,20 @@ jobs:
         with:
           path: _site
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - name: Deploy
         id: deploy
         uses: actions/deploy-pages@v4
 
       - name: Report a refresh that failed
-        if: steps.refresh.outcome == 'failure'
+        if: needs.build.outputs.refresh == 'failure'
         run: |
           echo "::error::The price refresh failed; the previous book was published again."
           exit 1
