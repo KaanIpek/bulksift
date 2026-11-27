@@ -342,24 +342,61 @@ Not measured: search volume (no tool for it here), Android, and Google's own
 ranking - the result lists came through a search tool, not a browser.
 
 **What the price book says about the product, found on the way.** Share of
-commons and uncommons whose dearest printing reaches a dollar, by the year the
-set came out (`data/prices.json` of 24 November):
+commons and uncommons that reach a dollar, by the year the set came out
+(`data/prices.json` of 24 November). Two columns, because the first version of
+this table counted only the dearest printing and flattered the middle years:
+"plain" is the printing a scan assumes (`defaultVariant`), "dearest" is the one
+the sorter judges by.
 
-| Era | Cards | $1 or more | $3 or more |
-|---|---|---|---|
-| 1999-2002 | 875 | 92% | 71% |
-| 2003-2010 | 3,528 | 86% | 67% |
-| 2011-2016 | 1,759 | 54% | 27% |
-| 2017-2019 | 1,401 | 26% | 13% |
-| 2020-2022 | 1,752 | 6% | 2% |
-| 2023 on | 2,740 | 1.4% (39 cards) | 0.4% (10 cards) |
+| Era | Cards | Plain, $1+ | Plain, $3+ | Dearest, $1+ | Dearest, $3+ |
+|---|---|---|---|---|---|
+| 1999-2002 | 875 | 74% | 33% | 92% | 71% |
+| 2003-2010 | 3,528 | 56% | 28% | 86% | 67% |
+| 2011-2016 | 1,759 | 13% | 5% | 54% | 27% |
+| 2017-2019 | 1,401 | 8% | 3% | 26% | 13% |
+| 2020-2022 | 1,752 | 4% | 1% | 6% | 2% |
+| 2023 on | 2,740 | 0.5% | 0.3% | 1.4% (39 cards) | 0.4% (10 cards) |
 
-Non-holo rares follow the same slope (100% down to 5%). So a box of current
-bulk has almost nothing in it to pull - which is also what every article on
-that first page tells its reader - and the sorter earns its keep on cards from
-before about 2020: a childhood binder, a bought-out collection, a shop's back
-stock. The store text and any advert should show that box, not this year's
-packs. Nothing in the app or the listing was changed for this.
+So a box of current bulk has almost nothing in it to pull - which is also what
+every article on that first page tells its reader. Plain cards pay only from
+sets before about 2011; from 2011 to 2019 the money is in the reverse-holo and
+other special printings, which the camera cannot tell from the plain one. The
+sorter earns its keep on a childhood binder, a bought-out collection, a shop's
+back stock. The store text and any advert should show that box, not this
+year's packs. Nothing in the app or the listing was changed for this.
+
+### 2026-11-27, later - the seller tier was measured: people pay, but not for a file
+
+The second candidate: a ~$20/month plan that turns a scanned box into a
+TCGplayer or eBay listing file.
+
+- **Sellers do pay for tools.** DeckTradr (out since August 2025): 1,359
+  ratings on the US App Store, 10K+ installs on Play; $4.99/month, and Pro at
+  $19.99/month or $199.99/year. TCG Automate: $9 to $155/month. SortSwift, for
+  shops: $99 to $499/month. Where DeckTradr's customers come from could not be
+  found - no founder statement, no interview.
+- **What they pay for is not an export.** DeckTradr Pro is a point of sale for
+  card-show tables (buy, sell, trade, per-event books) with listings pushed
+  straight to eBay; TCG Automate writes the eBay listing itself. The export
+  file is the cheap tier or the free one.
+- **The marketplaces give the scanning away.** TCGplayer's own app scans and
+  uploads for free; importing a list into inventory, CSV import and its Scan &
+  Identify tool start at seller Level 4, so a file is no use to a seller below
+  that. eBay has scan-to-list in its app, free.
+- **Two things this app lacks for it.** A listing needs the exact printing, and
+  two thirds of the catalogue has more than one priced printing that the camera
+  cannot tell apart (eBay says the same of its own scanner) - so most rows
+  would need a tap each. And a TCGplayer file is keyed by their SKU ids, which
+  the price feed here does not carry and their API is closed to new developers.
+  The second point is from memory of the format: TCGplayer's help pages
+  answered 403 and it was not read.
+
+So: a file export as a paid tier is dropped - it is the part everyone gives
+away. A real seller product is not ruled out by demand, but it is a new
+product (a point of sale and an eBay integration) fifteen months behind
+someone who already charges exactly this price, with the customer source
+unknown. Not started. Of the four candidates the two left are Apple Search Ads
+and the owner's own video, and both need the app in the store.
 
 ### Next, in the order I would do it
 
