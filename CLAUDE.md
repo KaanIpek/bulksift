@@ -316,6 +316,51 @@ Not yet seen on a phone: the plan rows with the store's real prices, a sandbox
 purchase of each plan, the allowance coming back the next day without a
 force-quit, and everything build 138 had not proven either.
 
+### 2026-11-27 - a page per set on the web was measured and dropped
+
+Asked what could bring customers besides paid ads, the owner picked "a page per
+set, generated from the daily price book" to measure first. It was measured
+before anything was built, and it is dropped.
+
+- **People do search for it.** Google's autocomplete offers "151 bulk cards
+  worth money", "destined rivals common cards worth money", "modern pokemon
+  commons worth money", "is pokemon bulk worth anything".
+- **The first page is taken**: game press (Destructoid, Kotaku, Dot Esports,
+  SI), TCGplayer's own "100 most expensive bulk cards", refreshed every few
+  months, and at least eight generated price sites.
+- **And ranking there does not fill an app.** Scanner apps that already run
+  exactly these pages, US App Store, 27 November: Pokex (scanpokemon.com - set
+  pages and price guides in 17 languages, out since February 2026) 89 ratings;
+  TCG Stacked (price guide and value calculator, since May 2025) 23; PokeInvest
+  (on the first page for "most valuable <set>", since April 2026) 17; Card
+  Codex 2. HoloDex, which buys its installs, has 25,965 since September 2025.
+  Ratings are not revenue, but 17 to 89 of them after 7 to 18 months is not a
+  channel. PokeScope also has set pages and 3,305 ratings; where those came
+  from could not be told apart.
+
+Not measured: search volume (no tool for it here), Android, and Google's own
+ranking - the result lists came through a search tool, not a browser.
+
+**What the price book says about the product, found on the way.** Share of
+commons and uncommons whose dearest printing reaches a dollar, by the year the
+set came out (`data/prices.json` of 24 November):
+
+| Era | Cards | $1 or more | $3 or more |
+|---|---|---|---|
+| 1999-2002 | 875 | 92% | 71% |
+| 2003-2010 | 3,528 | 86% | 67% |
+| 2011-2016 | 1,759 | 54% | 27% |
+| 2017-2019 | 1,401 | 26% | 13% |
+| 2020-2022 | 1,752 | 6% | 2% |
+| 2023 on | 2,740 | 1.4% (39 cards) | 0.4% (10 cards) |
+
+Non-holo rares follow the same slope (100% down to 5%). So a box of current
+bulk has almost nothing in it to pull - which is also what every article on
+that first page tells its reader - and the sorter earns its keep on cards from
+before about 2020: a childhood binder, a bought-out collection, a shop's back
+stock. The store text and any advert should show that box, not this year's
+packs. Nothing in the app or the listing was changed for this.
+
 ### Next, in the order I would do it
 
 1. **The remaining recognition gap — needs one real frame.** Holos and Special
