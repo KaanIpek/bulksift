@@ -5,21 +5,28 @@ import sys
 NAME = "BulkSift: TCG Card Scanner"
 SUBTITLE = "Sort bulk by price, hands-free"
 KEYWORDS = "pokemon,value,collection,trading,binder,tracker,inventory,checker,collector,holo,worth,scan,sorter"
-PROMO = ("Prop your phone over the table and pass cards under it. A low tick means bulk, "
+# Who this is written for changed on 2026-11-27: the box of OLD cards, not this year's bulk. In the price
+# book a plain common or uncommon reaches a dollar in 74% of 1999-2002 cards, 56% of 2003-2010, 13% of
+# 2011-2016 and 0.5% of 2023 on - so a current box has almost nothing to pull, and saying otherwise would
+# sell the app to the people it disappoints. No percentages in the copy itself: prices move.
+PROMO = ("Found a box of old cards? Pass them under your phone: a low tick means bulk, "
          "a bell means keep, a rising chime means pull it out. Prices refresh every day.")
-DESCRIPTION = """BulkSift scans trading cards as fast as you can pass them under your phone, and tells you by sound which ones are worth pulling out.
+DESCRIPTION = """Found a box of old cards? BulkSift scans them as fast as you can pass them under your phone, prices each one, and tells you by sound which are worth pulling out.
 
-Prop the phone over the table. There is no shutter button and no waiting between cards: each one is recognised as it goes by, priced, and added to your list. A bulk box that takes an evening to enter by hand takes a few minutes.
+Prop the phone over the table. There is no shutter button and no waiting between cards: each one is recognised as it goes by, priced, and added to your list. A box that takes an evening to look up card by card takes a few minutes.
+
+OLD BOXES ARE WHERE THE MONEY IS
+A box of this year's commons has very little in it to find. A childhood binder, a collection you bought, a shop's back stock are different: in older sets even plain commons and uncommons are often worth real money, and the older the set, the more of them are. Over 25,000 English-language cards are built in, from the first sets of 1999 to current ones.
 
 SORT BY EAR
 Turn on Sort by value and set two price lines. Every card then lands in one of three piles, and each pile has its own sound:
 - a low tick: bulk, keep it moving
 - a bell: worth keeping
 - a rising chime and a tap in your hand: pull this one out
-You never have to look at the screen. The camera cannot tell a foil from a plain printing, so each card is priced as its most valuable printing: a hit is never waved through as bulk.
+You never have to look at the screen. The camera cannot tell a foil, a reverse holo or a 1st Edition from the plain printing, so each card is sorted as its most valuable printing: a hit is never waved through as bulk. In an older box far more cards clear the line, so set the pull line higher. Your total counts each card at its plain printing until you say otherwise, and the list marks every card whose printing is worth a second look.
 
 RECOGNITION THAT RUNS ON YOUR PHONE
-Cards are identified on the device itself. No photo is uploaded and nothing waits on a server, so scanning works with no signal at all: at a card show, in a basement, at the back of a shop. Over 25,000 English-language cards are built in.
+Cards are identified on the device itself. No photo is uploaded and nothing waits on a server, so scanning works with no signal at all: at a card show, in a basement, at the back of a shop.
 
 PRICES YOU CAN CHECK
 Every card carries US market prices, refreshed daily. A refresh also re-prices what you scanned last week, so a collection total is a number you can act on.

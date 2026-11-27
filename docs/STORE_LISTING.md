@@ -31,6 +31,25 @@ keyword field. **That last one is a judgement call for the owner**: almost every
 rival does it and no rejection over it was found, but it is someone else's mark.
 Dropping it is a one-word edit.
 
+## Who the text is written for (2026-11-27)
+
+The box of old cards, not this year's bulk. The price book says a plain common
+or uncommon reaches a dollar in 74% of 1999-2002 cards, 56% of 2003-2010, 13%
+of 2011-2016 and 0.5% of 2023 on (`CLAUDE.md`, "2026-11-27"). So the
+description now opens on "Found a box of old cards?", has a section saying
+plainly that a current box has very little to find, and the promotional text
+opens the same way. Name, subtitle and keywords are unchanged: whether "old"
+or "vintage" is worth a keyword slot was not measured - the App Store's
+search-hint endpoint answered with an empty list for every term tried.
+
+Two sentences in the sorting paragraph changed for accuracy, not for audience:
+
+- It said each card is "priced as its most valuable printing". Only the sorter
+  does that; the collection total counts a card at its plain printing
+  (`defaultVariant`). The copy now says both.
+- On an old box the default lines ring "pull" far too often - see `CLAUDE.md`.
+  The copy tells the reader to set the pull line higher there.
+
 ## What is still missing before this can be submitted
 
 - **Screenshots**, 6.9" (1320 x 2868) and 6.5" (1242 x 2688), from the phone.
@@ -125,6 +144,9 @@ Required: 6.9" (1320 x 2868) and 6.5" (1242 x 2688). Everything else is
 inherited by App Store Connect.
 
 Six frames, in this order. The first two are what most people ever see.
+Shoot them over an older box - a binder page or a stack from the 2000s - since
+that is who the text now speaks to; the rule about keeping real card artwork
+out of the first two still holds.
 
 1. **Scanning, mid-pile** — the card under the reticle, the feed filling
    underneath. Caption: *Pass the pile under your phone.*

@@ -398,6 +398,36 @@ someone who already charges exactly this price, with the customer source
 unknown. Not started. Of the four candidates the two left are Apple Search Ads
 and the owner's own video, and both need the app in the store.
 
+### 2026-11-27, last - the store text now speaks to the old box, and what the sorter does there
+
+The owner said yes to rewriting the draft. Description and promotional text in
+App Store Connect now open on the box of old cards and say outright that a
+current box has little to find; `tools/store_listing.py` holds the text and the
+reason, `docs/STORE_LISTING.md` what was and was not changed. Read back equal.
+Nothing submitted.
+
+**Checking the copy against the sort rule turned up a problem with the rule
+itself on exactly that box.** The sorter judges every card by its dearest
+printing. For old sets the dearest printing is a 1st Edition or a reverse holo,
+so at the default lines ($1 keep, $10 pull), across the whole catalogue:
+
+| Era | Bulk | Pull at $10 | at $20 | at $50 | at $100 |
+|---|---|---|---|---|---|
+| 1999-2002 | 6% | 55% | 43% | 28% | 18% |
+| 2003-2010 | 11% | 52% | 39% | 21% | 11% |
+| 2011-2016 | 28% | 27% | 18% | 9% | 5% |
+| 2017-2019 | 42% | 24% | 15% | 7% | 4% |
+| 2020-2022 | 63% | 10% | 6% | 3% | 2% |
+| 2023 on | 68% | 12% | 7% | 2% | 1% |
+
+(Every card counted once; a real box is mostly commons, so its shares sit
+lower, but the shape holds.) A stop signal that fires on every second card is
+not a signal. The sorter is at its best on 2011-2019 boxes; on an older one it
+is the priced list that is worth having, and the pull line has to go up. The
+copy says so. Whether old sets should be judged by the Unlimited printing
+instead is a product decision and was not made: it trades a false alarm on
+most cards for a missed 1st Edition on a few.
+
 ### Next, in the order I would do it
 
 1. **The remaining recognition gap — needs one real frame.** Holos and Special
