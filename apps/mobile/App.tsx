@@ -94,7 +94,8 @@ import { runSelfTest } from './src/selfTest';
 import { shareCapture, type CapturedRead } from './src/capture';
 import { setSoundEnabled } from './src/feedback';
 import {
-  DEFAULT_RULE, emptyTally, pileFor, pileOfHit, sortPrice, tally, type SortRule,
+  DEFAULT_RULE, emptyTally, firstEditionSetAside, pileFor, pileOfHit, sortable, sortPrice, tally,
+  type SortRule,
 } from './src/sort';
 import CollectionBar from './src/CollectionBar';
 import AddCardSheet, { type AddTarget } from './src/AddCardSheet';
@@ -546,8 +547,11 @@ export default function App() {
     setEnt((e) => spend(refill(e, Date.now())));
     const variants = engine?.scanner.pricesFor(hit.card.i) ?? [];
     const pick = defaultVariant(variants);
+    // A card the sorter judged without its 1st Edition printing is flagged the
+    // same way an unsettled reprint is: PICK PRINTING, so the stamp gets looked at.
+    const checkPrinting = !!hit.ambiguity || firstEditionSetAside(variants);
     setEntries((prev) =>
-      addScan(prev, hit.card, pick.name, pick.price, 'NM', !!hit.ambiguity),
+      addScan(prev, hit.card, pick.name, pick.price, 'NM', checkPrinting),
     );
     // Outside the updater: React may re-invoke one, and a double-counted
     // session is precisely the drifting total this replaced.
@@ -604,7 +608,7 @@ export default function App() {
     setEntries((prev) => {
       const found = prev.find((e) => e.key === key);
       const without = found ? setQuantity(prev, key, found.quantity - 1) : prev;
-      return addScan(without, card, pick.name, pick.price, 'NM', false);
+      return addScan(without, card, pick.name, pick.price, 'NM', firstEditionSetAside(variants));
     });
     // The card count is unchanged - one card was scanned and it is still one
     // card. Only what it is worth moves.
@@ -618,7 +622,7 @@ export default function App() {
      */
     const row = recentRef.current.find((r) => r.entryKey === key);
     const nextPile = row?.pile
-      ? pileFor(sortPrice(variants.map((v) => v.market)), sortRule)
+      ? pileFor(sortPrice(sortable(variants).map((v) => v.market)), sortRule)
       : null;
     if (row?.pile && nextPile) {
       const from = row.pile;

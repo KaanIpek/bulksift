@@ -9,8 +9,9 @@
  */
 
 import {
-  DEFAULT_RULE, KEEP_STEPS, PULL_STEPS, cycleKeep, cyclePull, emptyTally, normaliseRule,
-  pileFor, ruleLabel, sortPrice, tally, type SortRule,
+  DEFAULT_RULE, KEEP_STEPS, PULL_STEPS, cycleKeep, cyclePull, emptyTally, firstEditionSetAside,
+  hitCandidates, normaliseRule, pileFor, pileOfHit, ruleLabel, sortable, sortPrice, tally,
+  type SortRule,
 } from '../src/sort.ts';
 
 let failed = 0;
@@ -47,6 +48,48 @@ check('no priced printing stays unknown', sortPrice([null, undefined]) === null)
 check('nothing at all is unknown', sortPrice([]) === null);
 check('and unknown is kept, not binned', pileFor(sortPrice([]), rule) === 'keep');
 check('NaN and Infinity are not prices', sortPrice([Number.NaN, Infinity, 2]) === 2);
+
+// --- the one printing that is left out --------------------------------------
+{
+  const names = (vs: Array<{ variant?: string }>) => vs.map((v) => v.variant).join(',');
+  const baseCommon = [{ variant: '1st Edition', market: 18 }, { variant: 'Unlimited', market: 0.6 }];
+  const baseHolo = [{ variant: '1st Edition Holofoil', market: 900 }, { variant: 'Unlimited Holofoil', market: 45 }];
+  const modern = [{ variant: 'Normal', market: 0.1 }, { variant: 'Reverse Holofoil', market: 30 }];
+  const none: never[] = [];
+  const noAlts = () => none;
+
+  check('a 1st Edition with a priced Unlimited twin is left out', names(sortable(baseCommon)) === 'Unlimited');
+  check('so the stamped common nobody has does not ring pull',
+    pileOfHit({ variants: baseCommon }, noAlts, rule) === 'bulk');
+  check('and the card is flagged for a look at the stamp', firstEditionSetAside(baseCommon));
+  check('the holofoil pair works the same way', names(sortable(baseHolo)) === 'Unlimited Holofoil');
+  check('an Unlimited holo worth pulling still rings pull',
+    pileOfHit({ variants: baseHolo }, noAlts, rule) === 'pull');
+  check('a reverse holo is NOT left out', names(sortable(modern)) === 'Normal,Reverse Holofoil'
+    && pileOfHit({ variants: modern }, noAlts, rule) === 'pull' && !firstEditionSetAside(modern));
+  const lonely = [{ variant: '1st Edition Holofoil', market: 250 }];
+  check('a 1st Edition with no Unlimited twin stays in', pileOfHit({ variants: lonely }, noAlts, rule) === 'pull'
+    && !firstEditionSetAside(lonely));
+  const unpricedTwin = [{ variant: '1st Edition', market: 18 }, { variant: 'Unlimited', market: null }];
+  check('an unpriced Unlimited twin does not hide the 1st Edition price',
+    pileOfHit({ variants: unpricedTwin }, noAlts, rule) === 'pull' && !firstEditionSetAside(unpricedTwin));
+  check('printings with no name behave as before', sortPrice(sortable([{ market: 0.1 }, { market: 30 }]).map((v) => v.market)) === 30);
+  check('nothing in, nothing out', sortable([]).length === 0 && !firstEditionSetAside([]));
+  // An unsettled reprint: each card's printings are filtered on their own.
+  const hit = {
+    variants: baseCommon,
+    ambiguity: { alternatives: [{ card: { i: 'base4-1' } }, { card: { i: 'gym1-1' } }] },
+  };
+  const book: Record<string, Array<{ variant: string; market: number }>> = {
+    'base4-1': [{ variant: 'Normal', market: 2 }],
+    'gym1-1': [{ variant: '1st Edition', market: 40 }, { variant: 'Unlimited', market: 3 }],
+  };
+  const got = hitCandidates(hit, (id) => book[id] ?? []).slice().sort((a, b) => (a ?? 0) - (b ?? 0));
+  check('a reprint the engine could not rule out is filtered card by card',
+    JSON.stringify(got) === JSON.stringify([0.6, 2, 3]));
+  check('and the dearest of what is left decides', pileOfHit(hit, (id) => book[id] ?? [], rule) === 'keep');
+  check('sorting off is still off', pileOfHit(hit, (id) => book[id] ?? [], DEFAULT_RULE) === null);
+}
 
 // --- the rule off disk ------------------------------------------------------
 check('nothing on disk is the default, and the default is off', normaliseRule(null) === DEFAULT_RULE && !DEFAULT_RULE.on);

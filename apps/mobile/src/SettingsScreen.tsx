@@ -244,7 +244,9 @@ export default function SettingsScreen({
         {sortRule.on
           ? 'Three sounds, so you never look up: a low tick for bulk, the bell '
             + 'for a keeper, a rising chime for a pull. A card is judged by its '
-            + 'most valuable printing, and one with no price is kept, not binned.'
+            + 'most valuable printing, and one with no price is kept, not binned. '
+            + 'A 1st Edition is the exception: it sounds like the Unlimited card '
+            + 'and is marked PICK PRINTING in your list, so check those for a stamp.'
           : 'Hear which cards to take out of the box as they pass, instead of '
             + 'reading a price for each one.'}
       </Text>

@@ -22,7 +22,8 @@
  * The one asymmetry everything here leans on: a bulk card on the keep pile
  * costs a second glance, a $40 card on the bulk pile costs $40. Every doubtful
  * case therefore resolves UPWARD - an unpriced card is kept, and every card is
- * judged by its dearest printing, not its plainest.
+ * judged by its dearest printing, not its plainest. One printing is left out of
+ * that on purpose, the 1st Edition; `sortable` says why.
  * (The collection does the opposite and values a card at its plainest printing,
  * for the opposite reason: a total should not flatter. Both are right; they are
  * answering different questions.)
@@ -112,9 +113,52 @@ export function sortPrice(
   return known.length ? Math.max(...known) : null;
 }
 
+/** A printing as the sorter sees it: what it is called and what it sells for. */
+export interface Printing {
+  variant?: string;
+  market?: number | null;
+}
+
+const isPriced = (v: Printing) => typeof v.market === 'number' && Number.isFinite(v.market);
+const isFirstEdition = (v: Printing) => (v.variant ?? '').startsWith('1st Edition');
+const isUnlimited = (v: Printing) => (v.variant ?? '').startsWith('Unlimited');
+
+/**
+ * The printings a card is sorted by: all of them, except a 1st Edition that
+ * has a priced Unlimited twin.
+ *
+ * "Dearest printing" was written with the reverse holo in mind - one in every
+ * pack, so one card in ten really is the dear one. A 1st Edition stamp is not
+ * like that. It exists on 935 cards in ten sets (Base to Neo Destiny), it sells
+ * for about three times its Unlimited twin (median 2.9x), and almost nobody's
+ * box has one. Judged by it, 201 of those sets' 568 commons and uncommons rang
+ * "pull" at the default $10 line - a stop signal on every third card of a
+ * childhood box, for a stamp that is not there. Judged by the Unlimited twin,
+ * 49 do. (`test/_sort_eras.ts`, price book of 24 November 2026.)
+ *
+ * What it costs, and it is not nothing: a real 1st Edition now sounds like its
+ * Unlimited twin. 223 printings stop ringing "pull"; 219 of them still ring
+ * "keep", and 146 that were worth a dollar or more now pass as bulk (4 of them
+ * worth $10 or more). The owner chose that trade on 28 November 2026, and
+ * `firstEditionSetAside` is what softens it: the list flags every such card so
+ * the stamp can be checked afterwards, at the table rather than mid-pile.
+ *
+ * When the Unlimited twin has no price the 1st Edition stays in - doubt still
+ * resolves upward. Reverse holos and holos are untouched.
+ */
+export function sortable<T extends Printing>(variants: ReadonlyArray<T>): T[] {
+  if (!variants.some((v) => isUnlimited(v) && isPriced(v))) return variants.slice();
+  return variants.filter((v) => !isFirstEdition(v));
+}
+
+/** True when `sortable` left a 1st Edition out: the card to check for a stamp. */
+export function firstEditionSetAside(variants: ReadonlyArray<Printing>): boolean {
+  return sortable(variants).length !== variants.length;
+}
+
 /** The parts of a scan hit this file needs, so it need not import the engine. */
 export interface SortableHit {
-  variants: ReadonlyArray<{ market?: number | null }>;
+  variants: ReadonlyArray<Printing>;
   ambiguity?: { alternatives: ReadonlyArray<{ card: { i: string } }> };
 }
 
@@ -124,11 +168,12 @@ export interface SortableHit {
  */
 export function hitCandidates(
   hit: SortableHit,
-  pricesFor: (cardId: string) => ReadonlyArray<{ market?: number | null }>,
+  pricesFor: (cardId: string) => ReadonlyArray<Printing>,
 ): Array<number | null | undefined> {
-  const out: Array<number | null | undefined> = hit.variants.map((v) => v.market);
+  // Card by card: one reprint having an Unlimited twin says nothing about another.
+  const out: Array<number | null | undefined> = sortable(hit.variants).map((v) => v.market);
   for (const alt of hit.ambiguity?.alternatives ?? []) {
-    for (const v of pricesFor(alt.card.i)) out.push(v.market);
+    for (const v of sortable(pricesFor(alt.card.i))) out.push(v.market);
   }
   return out;
 }
@@ -136,7 +181,7 @@ export function hitCandidates(
 /** Which pile a scan hit goes on, or null when sorting is off. */
 export function pileOfHit(
   hit: SortableHit,
-  pricesFor: (cardId: string) => ReadonlyArray<{ market?: number | null }>,
+  pricesFor: (cardId: string) => ReadonlyArray<Printing>,
   rule: SortRule,
 ): Pile | null {
   if (!rule.on) return null;
