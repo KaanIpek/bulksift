@@ -23,7 +23,7 @@ Turn on Sort by value and set two price lines. Every card then lands in one of t
 - a low tick: bulk, keep it moving
 - a bell: worth keeping
 - a rising chime and a tap in your hand: pull this one out
-You never have to look at the screen. The camera cannot tell a foil, a reverse holo or a 1st Edition from the plain printing, so each card is sorted as its most valuable printing: a hit is never waved through as bulk. In an older box far more cards clear the line, so set the pull line higher. Your total counts each card at its plain printing until you say otherwise, and the list marks every card whose printing is worth a second look.
+You never have to look at the screen. The camera cannot tell a foil or a reverse holo from the plain printing, so each card is sorted as its most valuable printing: a holo is not waved through as bulk. The one exception is a 1st Edition stamp: those cards sound like their Unlimited twin and are marked in your list, so you can check them for a stamp afterwards. In an older box more cards clear the line, so set the pull line higher. Your total counts each card at its plain printing until you say otherwise.
 
 RECOGNITION THAT RUNS ON YOUR PHONE
 Cards are identified on the device itself. No photo is uploaded and nothing waits on a server, so scanning works with no signal at all: at a card show, in a basement, at the back of a shop.

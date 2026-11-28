@@ -428,6 +428,37 @@ copy says so. Whether old sets should be judged by the Unlimited printing
 instead is a product decision and was not made: it trades a false alarm on
 most cards for a missed 1st Edition on a few.
 
+### 2026-11-28 - a 1st Edition is no longer what an old card is judged by
+
+The owner chose it: `sortable()` in `sort.ts` leaves a 1st Edition printing out
+when its Unlimited twin has a price, and the scan flags that row PICK PRINTING
+so the stamp is checked afterwards. Measured through the shipped functions
+(`apps/mobile/test/_sort_eras.ts`), commons and uncommons at the default lines:
+
+| Era | Pull before | Pull now | Bulk before | Bulk now |
+|---|---|---|---|---|
+| 1999-2002 | 40% | 23% | 8% | 23% |
+| 2003-2010 | 44% | 44% | 13% | 13% |
+| 2011 on | unchanged | | | |
+
+It touches 931 cards in ten sets, Base to Neo Destiny. The cost is written on
+the function: 146 stamped printings worth a dollar or more now sound like bulk
+(4 of them worth $10 or more), 219 drop from pull to keep.
+
+**It did less than I told the owner it would.** I said most of the false
+alarms would go. Half of the 1999-2002 ones did; the 2003-2010 number did not
+move at all, because there the dear printing is the reverse holo, and a
+reverse holo is one card in every pack - leaving it out would wave real hits
+through. That box still wants a higher pull line, and the store text still
+says so.
+
+**Build 140** carries it, is on TestFlight with a test note, and replaced 139
+on the 1.0 draft. The store description was changed again to match (it had
+also claimed the list marks "every card whose printing is worth a second
+look", which no build did - the badge was only ever set for an unsettled
+reprint). Nothing is submitted. Not seen on a phone: the badge on a scanned
+1st Edition card, and everything 139 had not proven.
+
 ### Next, in the order I would do it
 
 1. **The remaining recognition gap — needs one real frame.** Holos and Special
@@ -454,8 +485,9 @@ most cards for a missed 1st Edition on a few.
 5. **Store submission.** The text is in App Store Connect as a draft. Left, all
    needing the phone or the owner: six screenshots and one of the paywall, the
    content rights answer, the App Privacy questionnaire, and the owner's yes.
-   The list is in `docs/STORE_LISTING.md`. Submit a build that has the priced
-   paywall (139 or later), never 138.
+   The list is in `docs/STORE_LISTING.md`. Submit build 140 or later: 138 has
+   an unpriced subscribe button, and 139 does not do what the description now
+   says about 1st Edition cards.
 6. **AdMob payment profile**, or the rewarded unit serves nothing.
 
 ---

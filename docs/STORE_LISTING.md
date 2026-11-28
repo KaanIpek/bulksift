@@ -49,6 +49,11 @@ Two sentences in the sorting paragraph changed for accuracy, not for audience:
   (`defaultVariant`). The copy now says both.
 - On an old box the default lines ring "pull" far too often - see `CLAUDE.md`.
   The copy tells the reader to set the pull line higher there.
+- 2026-11-28: the paragraph now describes the 1st Edition exception that build
+  140 ships (sounds like the Unlimited card, marked in the list). It replaced
+  a sentence saying the list marks "every card whose printing is worth a second
+  look", which was not true of any build. **The description is only true of
+  build 140 or later.**
 
 ## What is still missing before this can be submitted
 
@@ -66,7 +71,8 @@ Two sentences in the sorting paragraph changed for accuracy, not for audience:
 - **Content rights declaration** - the question is whether the app shows
   third-party content and whether the owner has the right to. It shows card
   pictures. That answer is the owner's to give, so it was left blank.
-- **A build attached to the version.** It must be 139 or later. Build 138 has a
+- **A build attached to the version.** It must be 140 or later (139 lacks the
+  1st Edition behaviour the description names). Build 138 has a
   subscribe button with no price on it ("Go Pro"), which guideline 3.1.2
   rejects; 139 shows each plan's price and period, the renewal sentence, and
   Terms / Privacy links. `docs/review/paywall-web-preview.jpg` is a browser
